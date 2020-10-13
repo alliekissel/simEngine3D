@@ -39,7 +39,7 @@ def rotation(p):
                   [p[2][0]],
                   [p[3][0]]])
     e_tilde = skew(e)
-    return (e_0**2 - e.T @ e)*np.eye(3) + 2*(e @ e.T + e_0*e_tilde)
+    return (e_0 ** 2 - e.T @ e) * np.eye(3) + 2 * (e @ e.T + e_0 * e_tilde)
 
 
 def g_mat(p):
@@ -58,21 +58,21 @@ def b_mat(p, a_bar):
                   [p[3][0]]])
     e_tilde = skew(e)
     a_bar_tilde = skew(a_bar)
-    column_1 = (e_0*np.eye(3) + e_tilde) @ a_bar
-    column_2 = (e @ a_bar.T - (e_0*np.eye(3) + e_tilde) @ a_bar_tilde)
-    return np.concatenate((2*column_1, 2*column_2), axis=1)
+    column_1 = (e_0 * np.eye(3) + e_tilde) @ a_bar
+    column_2 = (e @ a_bar.T - (e_0 * np.eye(3) + e_tilde) @ a_bar_tilde)
+    return np.concatenate((2 * column_1, 2 * column_2), axis=1)
 
 
 # Don't need these yet, but may be useful later
 def omega_bar(p, p_dot):
     G = g_mat(p)
-    return 2*(G @ p_dot)
+    return 2 * (G @ p_dot)
 
 
 def omega_bar_tilde(p, p_dot):
     G = g_mat(p)
     G_p_dot_tilde = skew(G @ p_dot)
-    return 2*G_p_dot_tilde
+    return 2 * G_p_dot_tilde
 
 
 # ------------------------------------- DP1 Constraint --------------------------------------------
@@ -122,16 +122,13 @@ class GConDP1:
 
     def gamma(self):
         # calculate gamma, the RHS of the accel. equation
-        a_bar_tilde_i = skew(self.a_bar_i)
-        a_bar_tilde_j = skew(self.a_bar_j)
-
         a_i = self.A_i @ self.a_bar_i
         a_j = self.A_j @ self.a_bar_j
         a_dot_i = b_mat(self.p_i, self.a_bar_i) @ self.p_dot_i
         a_dot_j = b_mat(self.p_j, self.a_bar_j) @ self.p_dot_j
-        return -self.a_bar_i.T @ b_mat(self.p_dot_j, self.a_bar_j) @ self.p_dot_j \
+        return -a_i.T @ b_mat(self.p_dot_j, self.a_bar_j) @ self.p_dot_j \
                - a_j.T @ b_mat(self.p_dot_i, self.a_bar_i) @ self.p_dot_i \
-               - 2*(a_dot_i.T @ a_dot_j) + self.prescribed_val.f_ddot
+               - 2 * (a_dot_i.T @ a_dot_j) + self.prescribed_val.f_ddot
 
     def partial_r(self):
         # calculate partial_phi/partial_r
@@ -192,32 +189,49 @@ class GConDP2:
         self.omega_bar_tilde_i = omega_bar_tilde(self.p_i, self.p_dot_i)
         self.omega_bar_tilde_j = omega_bar_tilde(self.p_j, self.p_dot_j)
 
+    def d_ij(self):
+        # calculate d_ij, the distance between point P and point Q
+        r_p = self.body_i.r + self.A_i @ self.s_bar_p_i
+        r_q = self.body_j.r + self.A_j @ self.s_bar_q_j
+        return r_q - r_p
+
     def phi(self):
-        return
+        return self.a_bar_i.T @ self.A_i.T @ self.d_ij() - self.prescribed_val.f
 
     def nu(self):
         # calculate nu, the RHS of the velocity equation
-        return
+        return self.prescribed_val.f_dot
 
     def gamma(self):
         # calculate gamma, the RHS of the accel. equation
-        return
+        a_i = self.A_i @ self.a_bar_i
+        a_dot_i = b_mat(self.p_i, self.a_bar_i) @ self.p_dot_i
+        d_dot_ij = self.r_dot_j + b_mat(self.p_j, self.s_bar_q_j) @ self.p_dot_j \
+                   - self.r_dot_i - b_mat(self.p_i, self.s_bar_p_i) @ self.p_dot_j
+        return -a_i.T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
+               + a_i.T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
+               - self.d_ij().T @ b_mat(self.p_dot_i, self.a_bar_i) @ self.p_dot_i \
+               - 2 * a_dot_i.T @ d_dot_ij - self.prescribed_val.f_ddot
 
     def partial_r(self):
         # calculate partial_phi/partial_r
         # check for ground body
+        col_1 = -self.a_bar_i.T
+        col_2 = self.a_bar_i.T
         if self.body_j.body_id == 0:
-            return
+            return col_1
         else:
-            return
+            return np.concatenate((col_1, col_2), axis=1)
 
     def partial_p(self):
         # calculate partial_phi/partial_p
-        # check for ground bodys
+        # check for ground body
+        col_1 = self.d_ij().T @ b_mat(self.p_i, self.a_bar_i) - self.a_bar_i.T @ b_mat(self.p_i, self.s_bar_p_i)
+        col_2 = self.a_bar_i.T @ b_mat(self.p_j, self.s_bar_q_j)
         if self.body_j.body_id == 0:
-            return
+            return col_1
         else:
-            return
+            return np.concatenate((col_1, col_2), axis=1)
 
 
 # ------------------------------------- D Constraint --------------------------------------------
@@ -338,8 +352,8 @@ class GConCD:
     def gamma(self):
         # calculate gamma, the RHS of the accel. equation
         return self.c.T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
-            - self.c.T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
-            + self.prescribed_val.f_ddot
+               - self.c.T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
+               + self.prescribed_val.f_ddot
 
     def partial_r(self):
         # calculate partial_phi/partial_r
@@ -350,7 +364,7 @@ class GConCD:
         else:
             col_1 = -self.c.T
             col_2 = self.c.T
-            return np.concatenate((col_1,col_2), axis=1)
+            return np.concatenate((col_1, col_2), axis=1)
 
     def partial_p(self):
         # calculate partial_phi/partial_p
