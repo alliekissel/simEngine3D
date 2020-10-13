@@ -126,7 +126,7 @@ class GConDP1:
         a_j = self.A_j @ self.a_bar_j
         a_dot_i = b_mat(self.p_i, self.a_bar_i) @ self.p_dot_i
         a_dot_j = b_mat(self.p_j, self.a_bar_j) @ self.p_dot_j
-        return -a_i.T @ b_mat(self.p_dot_j, self.a_bar_j) @ self.p_dot_j \
+        return - a_i.T @ b_mat(self.p_dot_j, self.a_bar_j) @ self.p_dot_j \
                - a_j.T @ b_mat(self.p_dot_i, self.a_bar_i) @ self.p_dot_i \
                - 2 * (a_dot_i.T @ a_dot_j) + self.prescribed_val.f_ddot
 
@@ -142,11 +142,11 @@ class GConDP1:
     def partial_p(self):
         # calculate partial_phi/partial_p
         # check for ground body
+        col_1 = self.a_bar_j.T @ b_mat(self.p_i, self.a_bar_i)
+        col_2 = self.a_bar_i.T @ b_mat(self.p_j, self.a_bar_j)
         if self.body_j.body_id == 0:
-            return self.a_bar_j.T @ b_mat(self.p_i, self.a_bar_i)
+            return col_1
         else:
-            col_1 = self.a_bar_j.T @ b_mat(self.p_i, self.a_bar_i)
-            col_2 = self.a_bar_i.T @ b_mat(self.p_j, self.a_bar_j)
             return np.concatenate((col_1, col_2), axis=1)
 
 
@@ -208,7 +208,7 @@ class GConDP2:
         a_dot_i = b_mat(self.p_i, self.a_bar_i) @ self.p_dot_i
         d_dot_ij = self.r_dot_j + b_mat(self.p_j, self.s_bar_q_j) @ self.p_dot_j \
                    - self.r_dot_i - b_mat(self.p_i, self.s_bar_p_i) @ self.p_dot_j
-        return -a_i.T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
+        return - a_i.T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
                + a_i.T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
                - self.d_ij().T @ b_mat(self.p_dot_i, self.a_bar_i) @ self.p_dot_i \
                - 2 * a_dot_i.T @ d_dot_ij - self.prescribed_val.f_ddot
@@ -271,32 +271,46 @@ class GConD:
         self.omega_bar_tilde_i = omega_bar_tilde(self.p_i, self.p_dot_i)
         self.omega_bar_tilde_j = omega_bar_tilde(self.p_j, self.p_dot_j)
 
+    def d_ij(self):
+        # calculate d_ij, the distance between point P and point Q
+        r_p = self.body_i.r + self.A_i @ self.s_bar_p_i
+        r_q = self.body_j.r + self.A_j @ self.s_bar_q_j
+        return r_q - r_p
+
     def phi(self):
-        return
+        return self.d_ij().T @ self.d_ij() - self.prescribed_val.f
 
     def nu(self):
         # calculate nu, the RHS of the velocity equation
-        return
+        return self.prescribed_val.f_dot
 
     def gamma(self):
         # calculate gamma, the RHS of the accel. equation
-        return
+        d_dot_ij = self.r_dot_j + b_mat(self.p_j, self.s_bar_q_j) @ self.p_dot_j \
+                   - self.r_dot_i - b_mat(self.p_i, self.s_bar_p_i) @ self.p_dot_j
+        return - 2 * self.d_ij().T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
+               + 2 * self.d_ij().T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
+               - 2 * d_dot_ij.T @ d_dot_ij + self.prescribed_val.f_ddot
 
     def partial_r(self):
         # calculate partial_phi/partial_r
         # check for ground body
+        col_1 = -2 * self.d_ij().T
+        col_2 = 2 * self.d_ij().T
         if self.body_j.body_id == 0:
-            return
+            return col_1
         else:
-            return
+            return np.concatenate((col_1, col_2), axis=1)
 
     def partial_p(self):
         # calculate partial_phi/partial_p
-        # check for ground bodys
+        # check for ground body
+        col_1 = -2 * self.d_ij().T @ b_mat(self.p_i, self.s_bar_p_i)
+        col_2 = 2 * self.d_ij().T @ b_mat(self.p_j, self.s_bar_q_j)
         if self.body_j.body_id == 0:
-            return
+            return col_1
         else:
-            return
+            return np.concatenate((col_1, col_2), axis=1)
 
 
 # ------------------------------------- CD Constraint ---------------------------------------------
@@ -359,19 +373,19 @@ class GConCD:
         # calculate partial_phi/partial_r
         # no r dependence, so the partial derivatives are zero
         # check for ground body
+        col_1 = -self.c.T
+        col_2 = self.c.T
         if self.body_j.body_id == 0:
-            return -self.c.T
+            return col_1
         else:
-            col_1 = -self.c.T
-            col_2 = self.c.T
             return np.concatenate((col_1, col_2), axis=1)
 
     def partial_p(self):
         # calculate partial_phi/partial_p
         # check for ground body
+        col_1 = -self.c.T @ b_mat(self.p_i, self.s_bar_p_i)
+        col_2 = self.c.T @ b_mat(self.p_j, self.s_bar_q_j)
         if self.body_j.body_id == 0:
-            return -self.c.T @ b_mat(self.p_i, self.s_bar_p_i)
+            return col_1
         else:
-            col_1 = -self.c.T @ b_mat(self.p_i, self.s_bar_p_i)
-            col_2 = self.c.T @ b_mat(self.p_j, self.s_bar_q_j)
             return np.concatenate((col_1, col_2), axis=1)
