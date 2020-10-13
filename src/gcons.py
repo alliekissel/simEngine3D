@@ -153,6 +153,138 @@ class GConDP1:
             return np.concatenate((col_1, col_2), axis=1)
 
 
+# ------------------------------------- DP2 Constraint --------------------------------------------
+class GConDP2:
+    """This class implements the Dot Product 2 (DP2) geometric constraint.
+
+    The DP2 constraint reflects the fact that motion is such that the dot product between a vector
+    a_bar_i on body i and a second vector P_iQ_j from body i to body j assumes a specified value
+    Description credit: Dan Negrut, ME 751, Lecture 9, Slide 9
+    """
+
+    def __init__(self, body_i, a_bar_i, s_bar_p_i, body_j, s_bar_q_j, prescribed_val):
+        # initialize constraint attributes
+        # body i and the associated L_RF_i attributes
+        self.body_i = body_i
+        self.p_i = body_i.p
+        self.p_dot_i = body_i.p_dot
+        # algebraic vector a_bar_i
+        self.a_bar_i = a_bar_i
+        # location of point P
+        self.s_bar_p_i = s_bar_p_i
+        # body j and the associated L_RF_j attributes
+        self.body_j = body_j
+        self.p_j = body_j.p
+        self.p_dot_j = body_j.p_dot
+        #  location of point Q
+        self.s_bar_q_j = s_bar_q_j
+        # prescribed value the dot product should assume, specified through f(t)
+        #     * most often, f(t)=0, indicating vectors are orthogonal
+        #     * f(t) nonzero leads to a driving (rheonomic) constraint
+        # this object has f, f_dot and f_ddot attributes
+        self.prescribed_val = prescribed_val
+
+        # calculated quantities
+        self.A_i = rotation(self.p_i)
+        self.A_j = rotation(self.p_j)
+        self.omega_bar_i = omega_bar(self.p_i, self.p_dot_i)
+        self.omega_bar_j = omega_bar(self.p_j, self.p_dot_j)
+        self.omega_bar_tilde_i = omega_bar_tilde(self.p_i, self.p_dot_i)
+        self.omega_bar_tilde_j = omega_bar_tilde(self.p_j, self.p_dot_j)
+
+    def phi(self):
+        return
+
+    def nu(self):
+        # calculate nu, the RHS of the velocity equation
+        return
+
+    def gamma(self):
+        # calculate gamma, the RHS of the accel. equation
+        return
+
+    def partial_r(self):
+        # calculate partial_phi/partial_r
+        # check for ground body
+        if self.body_j.body_id == 0:
+            return
+        else:
+            return
+
+    def partial_p(self):
+        # calculate partial_phi/partial_p
+        # check for ground bodys
+        if self.body_j.body_id == 0:
+            return
+        else:
+            return
+
+
+# ------------------------------------- D Constraint --------------------------------------------
+class GConD:
+    """This class implements the Distance (D) geometric constraint.
+
+    The D constraint reflects the fact that motion is such that the distance between point P on
+    body i and point Q on body j assumes a specified value greater than zero.
+    Description credit: Dan Negrut, ME 751, Lecture 9, Slide 12
+    """
+
+    def __init__(self, body_i, s_bar_p_i, body_j, s_bar_q_j, prescribed_val):
+        # initialize constraint attributes
+        # body i and the associated L_RF_i attributes
+        self.body_i = body_i
+        self.p_i = body_i.p
+        self.p_dot_i = body_i.p_dot
+        # location of point P
+        self.s_bar_p_i = s_bar_p_i
+        # body j and the associated L_RF_j attributes
+        self.body_j = body_j
+        self.p_j = body_j.p
+        self.p_dot_j = body_j.p_dot
+        #  location of point Q
+        self.s_bar_q_j = s_bar_q_j
+        # prescribed value the dot product should assume, specified through f(t)
+        #     * most often, f(t)=0, indicating vectors are orthogonal
+        #     * f(t) nonzero leads to a driving (rheonomic) constraint
+        # this object has f, f_dot and f_ddot attributes
+        self.prescribed_val = prescribed_val
+
+        # calculated quantities
+        self.A_i = rotation(self.p_i)
+        self.A_j = rotation(self.p_j)
+        self.omega_bar_i = omega_bar(self.p_i, self.p_dot_i)
+        self.omega_bar_j = omega_bar(self.p_j, self.p_dot_j)
+        self.omega_bar_tilde_i = omega_bar_tilde(self.p_i, self.p_dot_i)
+        self.omega_bar_tilde_j = omega_bar_tilde(self.p_j, self.p_dot_j)
+
+    def phi(self):
+        return
+
+    def nu(self):
+        # calculate nu, the RHS of the velocity equation
+        return
+
+    def gamma(self):
+        # calculate gamma, the RHS of the accel. equation
+        return
+
+    def partial_r(self):
+        # calculate partial_phi/partial_r
+        # check for ground body
+        if self.body_j.body_id == 0:
+            return
+        else:
+            return
+
+    def partial_p(self):
+        # calculate partial_phi/partial_p
+        # check for ground bodys
+        if self.body_j.body_id == 0:
+            return
+        else:
+            return
+
+
 # ------------------------------------- CD Constraint ---------------------------------------------
 class GConCD:
     """This class implements the Coordinate Difference (CD) geometric constraint.
