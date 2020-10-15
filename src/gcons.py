@@ -113,14 +113,14 @@ class GConDP1:
         self.omega_bar_tilde_i = omega_bar_tilde(self.p_i, self.p_dot_i)
         self.omega_bar_tilde_j = omega_bar_tilde(self.p_j, self.p_dot_j)
 
-    def phi(self):
-        return self.a_bar_i.T @ self.A_i.T @ self.A_j @ self.a_bar_j - self.prescribed_val.f
+    def phi(self, t):
+        return self.a_bar_i.T @ self.A_i.T @ self.A_j @ self.a_bar_j - self.prescribed_val.f(t)
 
-    def nu(self):
+    def nu(self, t):
         # calculate nu, the RHS of the velocity equation
-        return self.prescribed_val.f_dot
+        return self.prescribed_val.f_dot(t)
 
-    def gamma(self):
+    def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
         a_i = self.A_i @ self.a_bar_i
         a_j = self.A_j @ self.a_bar_j
@@ -128,7 +128,7 @@ class GConDP1:
         a_dot_j = b_mat(self.p_j, self.a_bar_j) @ self.p_dot_j
         return - a_i.T @ b_mat(self.p_dot_j, self.a_bar_j) @ self.p_dot_j \
                - a_j.T @ b_mat(self.p_dot_i, self.a_bar_i) @ self.p_dot_i \
-               - 2 * (a_dot_i.T @ a_dot_j) + self.prescribed_val.f_ddot
+               - 2 * (a_dot_i.T @ a_dot_j) + self.prescribed_val.f_ddot(t)
 
     def partial_r(self):
         # calculate partial_phi/partial_r
@@ -195,14 +195,14 @@ class GConDP2:
         r_q = self.body_j.r + self.A_j @ self.s_bar_q_j
         return r_q - r_p
 
-    def phi(self):
-        return self.a_bar_i.T @ self.A_i.T @ self.d_ij() - self.prescribed_val.f
+    def phi(self, t):
+        return self.a_bar_i.T @ self.A_i.T @ self.d_ij() - self.prescribed_val.f(t)
 
-    def nu(self):
+    def nu(self, t):
         # calculate nu, the RHS of the velocity equation
-        return self.prescribed_val.f_dot
+        return self.prescribed_val.f_dot(t)
 
-    def gamma(self):
+    def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
         a_i = self.A_i @ self.a_bar_i
         a_dot_i = b_mat(self.p_i, self.a_bar_i) @ self.p_dot_i
@@ -211,7 +211,7 @@ class GConDP2:
         return - a_i.T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
                + a_i.T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
                - self.d_ij().T @ b_mat(self.p_dot_i, self.a_bar_i) @ self.p_dot_i \
-               - 2 * a_dot_i.T @ d_dot_ij - self.prescribed_val.f_ddot
+               - 2 * a_dot_i.T @ d_dot_ij - self.prescribed_val.f_ddot(t)
 
     def partial_r(self):
         # calculate partial_phi/partial_r
@@ -226,7 +226,8 @@ class GConDP2:
     def partial_p(self):
         # calculate partial_phi/partial_p
         # check for ground body
-        col_1 = self.d_ij().T @ b_mat(self.p_i, self.a_bar_i) - self.a_bar_i.T @ b_mat(self.p_i, self.s_bar_p_i)
+        col_1 = self.d_ij().T @ b_mat(self.p_i, self.a_bar_i) \
+                - self.a_bar_i.T @ b_mat(self.p_i, self.s_bar_p_i)
         col_2 = self.a_bar_i.T @ b_mat(self.p_j, self.s_bar_q_j)
         if self.body_j.body_id == 0:
             return col_1
@@ -277,20 +278,20 @@ class GConD:
         r_q = self.body_j.r + self.A_j @ self.s_bar_q_j
         return r_q - r_p
 
-    def phi(self):
-        return self.d_ij().T @ self.d_ij() - self.prescribed_val.f
+    def phi(self, t):
+        return self.d_ij().T @ self.d_ij() - self.prescribed_val.f(t)
 
-    def nu(self):
+    def nu(self, t):
         # calculate nu, the RHS of the velocity equation
-        return self.prescribed_val.f_dot
+        return self.prescribed_val.f_dot(t)
 
-    def gamma(self):
+    def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
         d_dot_ij = self.r_dot_j + b_mat(self.p_j, self.s_bar_q_j) @ self.p_dot_j \
                    - self.r_dot_i - b_mat(self.p_i, self.s_bar_p_i) @ self.p_dot_j
         return - 2 * self.d_ij().T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
                + 2 * self.d_ij().T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
-               - 2 * d_dot_ij.T @ d_dot_ij + self.prescribed_val.f_ddot
+               - 2 * d_dot_ij.T @ d_dot_ij + self.prescribed_val.f_ddot(t)
 
     def partial_r(self):
         # calculate partial_phi/partial_r
@@ -356,18 +357,18 @@ class GConCD:
         r_q = self.body_j.r + self.A_j @ self.s_bar_q_j
         return r_q - r_p
 
-    def phi(self):
-        return self.c.T @ self.d_ij() - self.prescribed_val.f
+    def phi(self, t):
+        return self.c.T @ self.d_ij() - self.prescribed_val.f(t)
 
-    def nu(self):
+    def nu(self, t):
         # calculate nu, the RHS of the velocity equation
-        return self.prescribed_val.f_dot
+        return self.prescribed_val.f_dot(t)
 
-    def gamma(self):
+    def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
         return self.c.T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
                - self.c.T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
-               + self.prescribed_val.f_ddot
+               + self.prescribed_val.f_ddot(t)
 
     def partial_r(self):
         # calculate partial_phi/partial_r
