@@ -54,13 +54,12 @@ class DrivingConstraint:
     """This class defines a driving function and its first and second derivatives
 
     This class stores the driving constraint function f(t) and its first and
-    second derivatives.
-    @TODO: .mdl input -> lambda function
+    second derivatives as lambda functions.
     """
-    def __init__(self, f, f_dot, f_ddot):
-        self.f = f
-        self.f_dot = f_dot
-        self.f_ddot = f_ddot
+    def __init__(self, f_string, f_dot_string, f_ddot_string):
+        self.f = lambda t: eval(f_string)
+        self.f_dot = lambda t: eval(f_dot_string)
+        self.f_ddot = lambda t: eval(f_ddot_string)
 
 
 # ------------------------------------- DP1 Constraint --------------------------------------------
