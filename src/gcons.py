@@ -191,14 +191,14 @@ class GConDP2:
     def partial_r(self):
         # calculate partial_phi/partial_r
         # check for ground body
-        phi_p_i = -self.a_bar_i.T
-        phi_p_j = self.a_bar_i.T
+        phi_r_i = -self.a_bar_i.T
+        phi_r_j = self.a_bar_i.T
 
         if self.body_i.is_ground:
-            return phi_p_j
+            return phi_r_j
         if self.body_j.is_ground:
-            return phi_p_i
-        return np.concatenate((phi_p_i, phi_p_j), axis=1)
+            return phi_r_i
+        return np.concatenate((phi_r_i, phi_r_j), axis=1)
 
     def partial_p(self):
         # calculate partial_phi/partial_p
@@ -223,34 +223,32 @@ class GConD:
     Description credit: Dan Negrut, ME 751, Lecture 9, Slide 12
     """
 
-    def __init__(self, body_i, s_bar_p_i, body_j, s_bar_q_j, prescribed_val):
-        # initialize constraint attributes
-        # body i and the associated L_RF_i attributes
-        self.body_i = body_i
-        self.p_i = body_i.p
-        self.p_dot_i = body_i.p_dot
-        # location of point P
-        self.s_bar_p_i = s_bar_p_i
-        # body j and the associated L_RF_j attributes
-        self.body_j = body_j
-        self.p_j = body_j.p
-        self.p_dot_j = body_j.p_dot
-        #  location of point Q
-        self.s_bar_q_j = s_bar_q_j
-        # prescribed value the dot product should assume, specified through f(t)
-        #     * most often, f(t)=0, indicating vectors are orthogonal
-        #     * f(t) nonzero leads to a driving (rheonomic) constraint
-        # this object has f, f_dot and f_ddot attributes
-        self.prescribed_val = prescribed_val
+    def __init__(self, constraint_dict, body_list):
+        self.body_i = body_list[0]
+        self.r_i = self.body_i.r
+        self.r_dot_i = self.body_i.r_dot
+        self.p_i = self.body_i.p
+        self.p_dot_i = self.body_i.p_dot
 
-        # calculated quantities
-        self.A_i = rotation(self.p_i)
-        self.A_j = rotation(self.p_j)
+        self.body_j = body_list[1]
+        self.p_j = self.body_j.p
+        self.p_dot_j = self.body_j.p_dot
+        self.r_j = self.body_j.r
+        self.r_dot_j = self.body_j.r_dot
+
+        self.s_bar_p_i = constraint_dict['s_bar_p_i']
+        self.s_bar_q_j = constraint_dict['s_bar_q_j']
+
+        self.prescribed_val = DrivingConstraint(constraint_dict['f'],
+                                                constraint_dict['f_dot'],
+                                                constraint_dict['f_ddot'])
 
     def d_ij(self):
         # calculate d_ij, the distance between point P and point Q
-        r_p = self.body_i.r + self.A_i @ self.s_bar_p_i
-        r_q = self.body_j.r + self.A_j @ self.s_bar_q_j
+        A_i = rotation(self.p_i)
+        A_j = rotation(self.p_j)
+        r_p = self.body_i.r + A_i @ self.s_bar_p_i
+        r_q = self.body_j.r + A_j @ self.s_bar_q_j
         return r_q - r_p
 
     def phi(self, t):
@@ -271,22 +269,26 @@ class GConD:
     def partial_r(self):
         # calculate partial_phi/partial_r
         # check for ground body
-        col_1 = -2 * self.d_ij().T
-        col_2 = 2 * self.d_ij().T
-        if self.body_j.body_id == 0:
-            return col_1
+        phi_r_i = -2 * self.d_ij().T
+        phi_r_j = 2 * self.d_ij().T
+        if self.body_i.is_ground:
+            return phi_r_j
+        if self.body_j.is_ground:
+            return phi_r_i
         else:
-            return np.concatenate((col_1, col_2), axis=1)
+            return np.concatenate((phi_r_i, phi_r_j), axis=1)
 
     def partial_p(self):
         # calculate partial_phi/partial_p
         # check for ground body
-        col_1 = -2 * self.d_ij().T @ b_mat(self.p_i, self.s_bar_p_i)
-        col_2 = 2 * self.d_ij().T @ b_mat(self.p_j, self.s_bar_q_j)
-        if self.body_j.body_id == 0:
-            return col_1
+        phi_p_i = -2 * self.d_ij().T @ b_mat(self.p_i, self.s_bar_p_i)
+        phi_p_j = 2 * self.d_ij().T @ b_mat(self.p_j, self.s_bar_q_j)
+        if self.body_i.is_ground:
+            return phi_p_j
+        if self.body_j.is_ground:
+            return phi_p_i
         else:
-            return np.concatenate((col_1, col_2), axis=1)
+            return np.concatenate((phi_p_i, phi_p_j), axis=1)
 
 
 # ------------------------------------- CD Constraint ---------------------------------------------
