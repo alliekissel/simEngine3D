@@ -4,8 +4,6 @@
 
 @TODO: provide file description here
 @TODO: additional function descriptions
-@TODO: refactor code to better handle reused quantities, i.e. e_0, e, e_tilde, etc. Perhaps group as
-       reference frame attributes
 """
 
 import numpy as np
@@ -13,26 +11,14 @@ import numpy as np
 
 # ------------------------------------- Utility functions -----------------------------------------
 def skew(vector):
-    """ Function to transform 3x1 vector into a skew symmetric cross product matrix
-
-    This function returns a numpy array with the skew symmetric cross product matrix for vector.
-    the skew symmetric cross product matrix is defined such that
-    np.cross(a, b) = np.dot(skew(a), b)
-    function credit: https://stackoverflow.com/questions/36915774/form-numpy-array-from-possible-numpy-array
-
-    :param vector: An array like vector to create the skew symmetric cross product matrix for
-    :return: A numpy array of the skew symmetric cross product vector
-    """
-
-    vector = np.array(vector)
-
+    """ Function to transform 3x1 vector into a skew symmetric cross product matrix """
     return np.array([[0, -vector.item(2), vector.item(1)],
                      [vector.item(2), 0, -vector.item(0)],
                      [-vector.item(1), vector.item(0), 0]])
 
 
 def rotation(p):
-    # calculate rotation matrix A
+    """ Function to create a rotation matrix from the Euler parameters """
     e_0 = p[0][0]
     e = np.array([[p[1][0]],
                   [p[2][0]],
@@ -42,6 +28,7 @@ def rotation(p):
 
 
 def g_mat(p):
+    """ Function to create a G matrix from the Euler parameters """
     e_0 = p[0][0]
     e = np.array([[p[1][0]],
                   [p[2][0]],
@@ -60,18 +47,6 @@ def b_mat(p, a_bar):
     column_1 = (e_0 * np.eye(3) + e_tilde) @ a_bar
     column_2 = (e @ a_bar.T - (e_0 * np.eye(3) + e_tilde) @ a_bar_tilde)
     return np.concatenate((2 * column_1, 2 * column_2), axis=1)
-
-
-# Don't need these yet, but may be useful later
-def omega_bar(p, p_dot):
-    G = g_mat(p)
-    return 2 * (G @ p_dot)
-
-
-def omega_bar_tilde(p, p_dot):
-    G = g_mat(p)
-    G_p_dot_tilde = skew(G @ p_dot)
-    return 2 * G_p_dot_tilde
 
 
 # ------------------------------------- Driving Constraint -----------------------------------------
@@ -121,10 +96,6 @@ class GConDP1:
         # calculated quantities
         self.A_i = rotation(self.p_i)
         self.A_j = rotation(self.p_j)
-        self.omega_bar_i = omega_bar(self.p_i, self.p_dot_i)
-        self.omega_bar_j = omega_bar(self.p_j, self.p_dot_j)
-        self.omega_bar_tilde_i = omega_bar_tilde(self.p_i, self.p_dot_i)
-        self.omega_bar_tilde_j = omega_bar_tilde(self.p_j, self.p_dot_j)
 
     def phi(self, t):
         return self.a_bar_i.T @ self.A_i.T @ self.A_j @ self.a_bar_j - self.prescribed_val.f(t)
@@ -197,10 +168,6 @@ class GConDP2:
         # calculated quantities
         self.A_i = rotation(self.p_i)
         self.A_j = rotation(self.p_j)
-        self.omega_bar_i = omega_bar(self.p_i, self.p_dot_i)
-        self.omega_bar_j = omega_bar(self.p_j, self.p_dot_j)
-        self.omega_bar_tilde_i = omega_bar_tilde(self.p_i, self.p_dot_i)
-        self.omega_bar_tilde_j = omega_bar_tilde(self.p_j, self.p_dot_j)
 
     def d_ij(self):
         # calculate d_ij, the distance between point P and point Q
@@ -280,10 +247,6 @@ class GConD:
         # calculated quantities
         self.A_i = rotation(self.p_i)
         self.A_j = rotation(self.p_j)
-        self.omega_bar_i = omega_bar(self.p_i, self.p_dot_i)
-        self.omega_bar_j = omega_bar(self.p_j, self.p_dot_j)
-        self.omega_bar_tilde_i = omega_bar_tilde(self.p_i, self.p_dot_i)
-        self.omega_bar_tilde_j = omega_bar_tilde(self.p_j, self.p_dot_j)
 
     def d_ij(self):
         # calculate d_ij, the distance between point P and point Q
