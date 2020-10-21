@@ -6,7 +6,6 @@
 @TODO: additional function descriptions
 @TODO: refactor code to better handle reused quantities, i.e. e_0, e, e_tilde, etc. Perhaps group as
        reference frame attributes
-@TODO: handle cases where derivatives of driving constraint function are not given
 """
 
 import numpy as np
@@ -73,6 +72,20 @@ def omega_bar_tilde(p, p_dot):
     G = g_mat(p)
     G_p_dot_tilde = skew(G @ p_dot)
     return 2 * G_p_dot_tilde
+
+
+# ------------------------------------- Driving Constraint -----------------------------------------
+class DrivingConstraint:
+    """This class defines a driving function and its first and second derivatives
+
+    This class stores the driving constraint function f(t) and its first and
+    second derivatives.
+    @TODO: .mdl input -> lambda function
+    """
+    def __init__(self, f, f_dot, f_ddot):
+        self.f = f
+        self.f_dot = f_dot
+        self.f_ddot = f_ddot
 
 
 # ------------------------------------- DP1 Constraint --------------------------------------------
