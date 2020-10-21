@@ -1,12 +1,79 @@
 #!/usr/bin/env python3
 
-# this file will instantiate a system
+# class to initialize system and perform analysis
 
-# read in .mdl file - prefer to have .mdl file input at command line
-#     also command line - flags for desired returned values
-# parse model parameters
+from .gcons import *
 
-# maybe do a loop through the .mdl file to count number of constraints
-# and instantiate the constraints based on the type name
-# @TODO: write .mdl parser and create system in this file
+import json as js
 
+
+class SimEngine3D:
+    def __init__(self, filename, analysis=0):
+        self.bodies_list = []
+        self.constraint_list = []
+
+        self.init_system(filename)
+
+        if analysis == 0:
+            self.kinematics_solver()
+        else:
+            self.inverse_dynamics_solver()
+
+    def init_system(self, filename):
+        # setup initial system based on model parameters
+        with open(filename) as f:
+            model = js.load(f)
+            bodies = model['bodies']
+            constraints = model['constraints']
+
+        for body in bodies:
+            self.bodies_list.append(RigidBody(body))
+
+        for con in constraints:
+            if con['type'] == 'DP1':
+                self.constraint_list.append(GConDP1(con, bodies))
+            elif con['type'] == 'DP2':
+                self.constraint_list.append(GConDP2(con, bodies))
+            elif con['type'] == 'D':
+                self.constraint_list.append(GConD(con, bodies))
+            elif con['type'] == 'CD':
+                self.constraint_list.append(GConCD(con, bodies))
+            else:
+                print("Incorrect geometric constraint type given.")
+        return
+
+    def kinematics_solver(self):
+        # position analysis - call newton-raphson
+        # velocity analysis
+        # acceleration analysis
+        return
+
+    def inverse_dynamics_solver(self):
+        # perform inverse dynamics analysis
+        return
+
+
+class RigidBody:
+    def __init__(self, body_dict):
+        if body_dict['type'] == 'ground':
+            self.body_id = body_dict['id']
+            self.r = np.array([[0],
+                               [0],
+                               [0]])
+            self.r_dot = np.array([[0],
+                                   [0],
+                                   [0]])
+            self.p = np.array([[0],
+                               [0],
+                               [0],
+                               [0]])
+            self.p_dot = np.array([[0],
+                                   [0],
+                                   [0],
+                                   [0]])
+        else:
+            self.body_id = body_dict['id']
+            self.r = np.array([body_dict['r']]).T
+            self.r_dot = np.array([body_dict['r_dot']]).T
+            self.p = np.array([body_dict['p']]).T
+            self.p_dot = np.array([body_dict['p_dot']]).T
