@@ -31,13 +31,13 @@ class SimEngine3D:
 
         for con in constraints:
             if con['type'] == 'DP1':
-                self.constraint_list.append(GConDP1(con, bodies))
+                self.constraint_list.append(GConDP1(con, self.bodies_list))
             elif con['type'] == 'DP2':
-                self.constraint_list.append(GConDP2(con, bodies))
+                self.constraint_list.append(GConDP2(con, self.bodies_list))
             elif con['type'] == 'D':
-                self.constraint_list.append(GConD(con, bodies))
+                self.constraint_list.append(GConD(con, self.bodies_list))
             elif con['type'] == 'CD':
-                self.constraint_list.append(GConCD(con, bodies))
+                self.constraint_list.append(GConCD(con, self.bodies_list))
             else:
                 print("Incorrect geometric constraint type given.")
         return
@@ -56,6 +56,7 @@ class SimEngine3D:
 class RigidBody:
     def __init__(self, body_dict):
         if body_dict['type'] == 'ground':
+            self.ground = True
             self.body_id = body_dict['id']
             self.r = np.array([[0],
                                [0],
@@ -72,6 +73,7 @@ class RigidBody:
                                    [0],
                                    [0]])
         else:
+            self.ground = False
             self.body_id = body_dict['id']
             self.r = np.array([body_dict['r']]).T
             self.r_dot = np.array([body_dict['r_dot']]).T

@@ -72,32 +72,26 @@ class GConDP1:
     Description credit: Dan Negrut, ME 751, Lecture 8, Slide 34
     """
 
-    def __init__(self, body_i, a_bar_i, body_j, a_bar_j, prescribed_val):
-        # initialize constraint attributes
-        # body i and the associated L_RF_i attributes
-        self.body_i = body_i
-        self.p_i = body_i.p
-        self.p_dot_i = body_i.p_dot
-        # algebraic vector a_bar_i
-        self.a_bar_i = a_bar_i
-        # body j and the associated L_RF_j attributes
-        self.body_j = body_j
-        self.p_j = body_j.p
-        self.p_dot_j = body_j.p_dot
-        #  algebraic vector a_bar_j
-        self.a_bar_j = a_bar_j
-        # prescribed value the dot product should assume, specified through f(t)
-        #     * most often, f(t)=0, indicating vectors are orthogonal
-        #     * f(t) nonzero leads to a driving (rheonomic) constraint
-        # this object has f, f_dot and f_ddot attributes
-        self.prescribed_val = prescribed_val
+    def __init__(self, constraint_dict, body_list):
+        self.body_i = body_list[0]
+        self.p_i = self.body_i.p
+        self.p_dot_i = self.body_i.p_dot
 
-        # calculated quantities
-        self.A_i = rotation(self.p_i)
-        self.A_j = rotation(self.p_j)
+        self.body_j = body_list[1]
+        self.p_j = self.body_j.p
+        self.p_dot_j = self.body_j.p_dot
+
+        self.a_bar_i = constraint_dict['a_bar_i']
+        self.a_bar_j = constraint_dict['a_bar_j']
+
+        self.prescribed_val = DrivingConstraint(constraint_dict['f'],
+                                                constraint_dict['f_dot'],
+                                                constraint_dict['f_ddot'])
 
     def phi(self, t):
-        return self.a_bar_i.T @ self.A_i.T @ self.A_j @ self.a_bar_j - self.prescribed_val.f(t)
+        A_i = rotation(self.p_i)
+        A_j = rotation(self.p_j)
+        return self.a_bar_i.T @ A_i.T @ A_j @ self.a_bar_j - self.prescribed_val.f(t)
 
     def nu(self, t):
         # calculate nu, the RHS of the velocity equation
@@ -105,8 +99,10 @@ class GConDP1:
 
     def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
-        a_i = self.A_i @ self.a_bar_i
-        a_j = self.A_j @ self.a_bar_j
+        A_i = rotation(self.p_i)
+        A_j = rotation(self.p_j)
+        a_i = A_i @ self.a_bar_i
+        a_j = A_j @ self.a_bar_j
         a_dot_i = b_mat(self.p_i, self.a_bar_i) @ self.p_dot_i
         a_dot_j = b_mat(self.p_j, self.a_bar_j) @ self.p_dot_j
         return - a_i.T @ b_mat(self.p_dot_j, self.a_bar_j) @ self.p_dot_j \
@@ -117,7 +113,7 @@ class GConDP1:
         # calculate partial_phi/partial_r
         # no r dependence, so the partial derivatives are zero
         # check for ground body
-        if self.body_j.body_id == 0:
+        if self.body_i.ground or self.body_j.ground:
             return np.zeros((1, 3))
         else:
             return np.zeros((1, 6))
@@ -127,7 +123,9 @@ class GConDP1:
         # check for ground body
         col_1 = self.a_bar_j.T @ b_mat(self.p_i, self.a_bar_i)
         col_2 = self.a_bar_i.T @ b_mat(self.p_j, self.a_bar_j)
-        if self.body_j.body_id == 0:
+        if self.body_i.ground:
+            return col_2
+        elif self.body_j.ground:
             return col_1
         else:
             return np.concatenate((col_1, col_2), axis=1)
