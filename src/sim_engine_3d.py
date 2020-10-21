@@ -56,7 +56,7 @@ class SimEngine3D:
 class RigidBody:
     def __init__(self, body_dict):
         if body_dict['type'] == 'ground':
-            self.ground = True
+            self.is_ground = True
             self.body_id = body_dict['id']
             self.r = np.array([[0],
                                [0],
@@ -73,7 +73,7 @@ class RigidBody:
                                    [0],
                                    [0]])
         else:
-            self.ground = False
+            self.is_ground = False
             self.body_id = body_dict['id']
             self.r = np.array([body_dict['r']]).T
             self.r_dot = np.array([body_dict['r_dot']]).T
