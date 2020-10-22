@@ -2,9 +2,15 @@
 
 # class to initialize system and perform analysis
 
-from .gcons import *
+import sys
+import pathlib as pl
+src_folder = pl.Path('./src/')
+sys.path.append(str(src_folder))
+
+from gcons import *
 
 import json as js
+import numpy as np
 
 
 class SimEngine3D:
@@ -55,7 +61,7 @@ class SimEngine3D:
 
 class RigidBody:
     def __init__(self, body_dict):
-        if body_dict['type'] == 'ground':
+        if body_dict['name'] == 'ground':
             self.is_ground = True
             self.body_id = body_dict['id']
             self.r = np.array([[0],

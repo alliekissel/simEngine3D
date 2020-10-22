@@ -45,7 +45,7 @@ def b_mat(p, a_bar):
     e_tilde = skew(e)
     a_bar_tilde = skew(a_bar)
     column_1 = (e_0 * np.eye(3) + e_tilde) @ a_bar
-    column_2 = (e @ a_bar.T - (e_0 * np.eye(3) + e_tilde) @ a_bar_tilde)
+    column_2 = e @ a_bar.T - (e_0 * np.eye(3) + e_tilde) @ a_bar_tilde
     return np.concatenate((2 * column_1, 2 * column_2), axis=1)
 
 
@@ -82,8 +82,8 @@ class GConDP1:
         self.p_j = self.body_j.p
         self.p_dot_j = self.body_j.p_dot
 
-        self.a_bar_i = constraint_dict['a_bar_i']
-        self.a_bar_j = constraint_dict['a_bar_j']
+        self.a_bar_i = np.array([constraint_dict['a_bar_i']]).T
+        self.a_bar_j = np.array([constraint_dict['a_bar_j']]).T
 
         self.prescribed_val = DrivingConstraint(constraint_dict['f'],
                                                 constraint_dict['f_dot'],
@@ -152,9 +152,9 @@ class GConDP2:
         self.r_j = self.body_j.r
         self.r_dot_j = self.body_j.r_dot
 
-        self.a_bar_i = constraint_dict['a_bar_i']
-        self.s_bar_p_i = constraint_dict['s_bar_p_i']
-        self.s_bar_q_j = constraint_dict['s_bar_q_j']
+        self.a_bar_i = np.array([constraint_dict['a_bar_i']]).T
+        self.s_bar_p_i = np.array([constraint_dict['s_bar_p_i']]).T
+        self.s_bar_q_j = np.array([constraint_dict['s_bar_q_j']]).T
 
         self.prescribed_val = DrivingConstraint(constraint_dict['f'],
                                                 constraint_dict['f_dot'],
@@ -236,8 +236,8 @@ class GConD:
         self.r_j = self.body_j.r
         self.r_dot_j = self.body_j.r_dot
 
-        self.s_bar_p_i = constraint_dict['s_bar_p_i']
-        self.s_bar_q_j = constraint_dict['s_bar_q_j']
+        self.s_bar_p_i = np.array([constraint_dict['s_bar_p_i']]).T
+        self.s_bar_q_j = np.array([constraint_dict['s_bar_q_j']]).T
 
         self.prescribed_val = DrivingConstraint(constraint_dict['f'],
                                                 constraint_dict['f_dot'],
@@ -314,9 +314,9 @@ class GConCD:
         self.r_j = self.body_j.r
         self.r_dot_j = self.body_j.r_dot
 
-        self.c = constraint_dict['c']
-        self.s_bar_p_i = constraint_dict['s_bar_p_i']
-        self.s_bar_q_j = constraint_dict['s_bar_q_j']
+        self.c = np.array([constraint_dict['c']]).T
+        self.s_bar_p_i = np.array([constraint_dict['s_bar_p_i']]).T
+        self.s_bar_q_j = np.array([constraint_dict['s_bar_q_j']]).T
 
         self.prescribed_val = DrivingConstraint(constraint_dict['f'],
                                                 constraint_dict['f_dot'],
