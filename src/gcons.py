@@ -8,6 +8,9 @@
 
 import numpy as np
 
+#@TODO: think of better way to handle numpy objects in eval()
+from numpy import cos, sin, pi
+
 
 # ------------------------------------- Utility functions -----------------------------------------
 def skew(vector):

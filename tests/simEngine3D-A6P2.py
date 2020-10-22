@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
 
-# This is a temporary file. @TODO create model parser in sim_engine_3d.py
 
 import sys
-sys.path.append("../")
+import pathlib as pl
+src_folder = pl.Path('../src/')
+sys.path.append(str(src_folder))
 
-import numpy as np
-from src.rigidbody import RigidBody
-from src.driving_constraint import DrivingConstraint
-from src.gcons import GConDP1, GConCD
+from sim_engine_3d import *
 
 
 def print_results(gcon, t):
     # sloppily prints the return values of each function
-    print("Phi: ", gcon.phi(t)[0][0], "\nnu: ", gcon.nu(t), "\ngamma: ", gcon.gamma(t)[0][0],
-          "\npartial_r: ", gcon.partial_r()[0], "\npartial_p: ", gcon.partial_p()[0])
+    print("Phi: ", gcon.phi(t), "\nnu: ", gcon.nu(t), "\ngamma: ", gcon.gamma(t),
+          "\npartial_r: ", gcon.partial_r(), "\npartial_p: ", gcon.partial_p())
+
+simulation = SimEngine3D("../models/revJoint.mdl")
+for i in range(0, len(simulation.constraint_list)):
+    print(print_results(simulation.constraint_list[i], 0))
 
 
+'''
 # create ground object
 ground_id = 0
 r_j = np.array([[0],
@@ -71,3 +74,4 @@ dp1_constraint = GConDP1(body_i, a_bar_i, ground, a_bar_j, prescribed_val_dp1)
 
 # @TODO: add flag options for return values
 print_results(dp1_constraint, t=0)
+'''
