@@ -2,57 +2,60 @@
 
 import numpy as np
 
-
-def get_vals(body_i, body_j, gcon, t):
-
-    # Get Phi, Phi_q, and initialize q
-    # check for ground body
-    if body_j.body_id == 0:
-        # no r, p for ground body
-        Phi = np.concatenate((gcon.phi(t), 0.5*body_i.p.T @ body_i.p - 0.5), axis=None)
-        Phi_q_g = np.concatenate((gcon.partial_r(), gcon.partial_p()), axis=None)
-        print(Phi_q_g)
-        print(body_i.p.T)
-        Phi_q = np.concatenate((Phi_q_g, body_i.p.T), axis=1)
-        q = np.concatenate((body_i.r, body_i.p), axis=None)
-    else:
-        Phi = np.concatenate((gcon.phi(t), 0.5*body_i.p.T @ body_i.p - 0.5, 0.5*body_j.p.T @ body_j.p - 0.5),
-                             axis=None)
-        Phi_q_g = np.concatenate((gcon.partial_r(), gcon.partial_p()), axis=None)
-        Phi_q = np.concatenate((Phi_q_g, body_i.p.T, body_j.p.T), axis=1)
-        q = np.concatenate((body_i.r, body_i.p, body_j.r, body_j.p), axis=None)
-
-    return q, Phi, Phi_q
-
-
-def newton_raphson(body_i, body_j, gcon, t, tol):
+def newton_raphson(cons_list, bodies_list, q_0, Phi_0, Phi_q_0, t, tol):
     # Return the approximate solution to phi(q,t)=0 via Newton-Raphson Method
-    # @TODO: generalize to handle more than one gcon and more than two bodies
 
-    q0, Phi, Phi_q = get_vals(body_i, body_j, gcon, t)
+    q_k = q_0
+    Phi_k = Phi_0
+    Phi_q_k = Phi_q_0
+    # initialize the norm to be greater than the tolerance so loop begins
+    delta_q_norm = 2*tol
 
-    qk = q0
-    delta_q_norm = 1
+    iteration = 0
+
     while delta_q_norm > tol:
 
-        delta_q = np.linalg.solve(Phi_q, Phi)
-        q_new = qk - delta_q
+        delta_q = np.linalg.solve(Phi_q_k, Phi_k)
+        q_new = q_k - delta_q
 
-        delta_q_norm = np.linalg.norm(delta_q)
-
-        # update body attributes
-        if body_j.body_id == 0:
-            body_i.r = q_new[0:3]
-            body_i.p = q_new[3:]
-        else:
-            body_i.r = q_new[0:3]
-            body_i.p = q_new[3:7]
-            body_j.r = q_new[7:10]
-            body_j.p = q_new[10:]
+        i = 0
+        n_bodies = 0
+        for body in bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                # update generalized coordinates for bodies
+                rdim = 3
+                pdim = 4
+                r_start = i * (rdim + pdim)
+                p_start = (r_start + pdim) - 1
+                body.r = q_new[r_start:r_start+rdim]
+                body.p = q_new[p_start:p_start+pdim]
+                n_bodies += 1
+                i += 1
 
         # Get updated Phi, Phi_q
-        q, Phi, Phi_q = get_vals(body_i, body_j, gcon, t)
+        #@TODO: should create a get function for these and use in kinematics_solver() too
+        n_constraints = len(cons_list)
+        for i, con in enumerate(cons_list):
+            Phi_k[i] = con.phi(t)
+            Phi_q_k[i, 0:3 * n_bodies] = con.partial_r()
+            Phi_q_k[i, 3 * n_bodies:] = con.partial_p()
 
-        qk = q_new
+        i = 0
+        for body in bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                rdim = 3
+                pdim = 4
+                r_start = i * (rdim + pdim)
+                Phi_k[i+n_constraints] = body.p.T @ body.p - 1.0
+                Phi_q_k[i + n_constraints, r_start:r_start + pdim] = 2*body.p.T
+                i += 1
 
-    return qk
+        q_k = q_new
+        delta_q_norm = np.linalg.norm(delta_q)
+        iteration += 1
+
+    return q_k, iteration

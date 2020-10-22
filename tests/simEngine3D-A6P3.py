@@ -6,8 +6,6 @@ import sys
 sys.path.append("../")
 
 import numpy as np
-from src.rigidbody import RigidBody
-from src.driving_constraint import DrivingConstraint
 from src.gcons import GConDP1, GConCD
 from src.newton_raphson import *
 

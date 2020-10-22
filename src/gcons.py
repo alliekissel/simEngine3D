@@ -27,7 +27,8 @@ def rotation(p):
                   [p[2][0]],
                   [p[3][0]]])
     e_tilde = skew(e)
-    return (e_0 ** 2 - e.T @ e) * np.eye(3) + 2 * (e @ e.T + e_0 * e_tilde)
+    #return (e_0 ** 2 - e.T @ e) * np.eye(3) + 2 * (e @ e.T + e_0 * e_tilde)
+    return (2*e_0 ** 2 - 1) * np.eye(3) + 2 * (e @ e.T + e_0 * e_tilde)
 
 
 def g_mat(p):
@@ -124,8 +125,12 @@ class GConDP1:
     def partial_p(self):
         # calculate partial_phi/partial_p
         # check for ground body
-        phi_p_i = self.a_bar_j.T @ b_mat(self.p_i, self.a_bar_i)
-        phi_p_j = self.a_bar_i.T @ b_mat(self.p_j, self.a_bar_j)
+        A_i = rotation(self.p_i)
+        A_j = rotation(self.p_j)
+        a_i = A_i @ self.a_bar_i
+        a_j = A_j @ self.a_bar_j
+        phi_p_i = a_j.T @ b_mat(self.p_i, self.a_bar_i)
+        phi_p_j = a_i.T @ b_mat(self.p_j, self.a_bar_j)
         if self.body_i.is_ground:
             return phi_p_j
         if self.body_j.is_ground:
