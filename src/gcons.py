@@ -27,7 +27,6 @@ def rotation(p):
                   [p[2][0]],
                   [p[3][0]]])
     e_tilde = skew(e)
-    #return (e_0 ** 2 - e.T @ e) * np.eye(3) + 2 * (e @ e.T + e_0 * e_tilde)
     return (2*e_0 ** 2 - 1) * np.eye(3) + 2 * (e @ e.T + e_0 * e_tilde)
 
 
@@ -78,11 +77,11 @@ class GConDP1:
     """
 
     def __init__(self, constraint_dict, body_list):
-        self.body_i = body_list[0]
+        self.body_i = body_list[1]
         self.p_i = self.body_i.p
         self.p_dot_i = self.body_i.p_dot
 
-        self.body_j = body_list[1]
+        self.body_j = body_list[0]
         self.p_j = self.body_j.p
         self.p_dot_j = self.body_j.p_dot
 
@@ -148,13 +147,13 @@ class GConDP2:
     """
 
     def __init__(self, constraint_dict, body_list):
-        self.body_i = body_list[0]
+        self.body_i = body_list[1]
         self.r_i = self.body_i.r
         self.r_dot_i = self.body_i.r_dot
         self.p_i = self.body_i.p
         self.p_dot_i = self.body_i.p_dot
 
-        self.body_j = body_list[1]
+        self.body_j = body_list[0]
         self.p_j = self.body_j.p
         self.p_dot_j = self.body_j.p_dot
         self.r_j = self.body_j.r
@@ -232,13 +231,13 @@ class GConD:
     """
 
     def __init__(self, constraint_dict, body_list):
-        self.body_i = body_list[0]
+        self.body_i = body_list[1]
         self.r_i = self.body_i.r
         self.r_dot_i = self.body_i.r_dot
         self.p_i = self.body_i.p
         self.p_dot_i = self.body_i.p_dot
 
-        self.body_j = body_list[1]
+        self.body_j = body_list[0]
         self.p_j = self.body_j.p
         self.p_dot_j = self.body_j.p_dot
         self.r_j = self.body_j.r
@@ -310,13 +309,13 @@ class GConCD:
     """
 
     def __init__(self, constraint_dict, body_list):
-        self.body_i = body_list[0]
+        self.body_i = body_list[1]
         self.r_i = self.body_i.r
         self.r_dot_i = self.body_i.r_dot
         self.p_i = self.body_i.p
         self.p_dot_i = self.body_i.p_dot
 
-        self.body_j = body_list[1]
+        self.body_j = body_list[0]
         self.p_j = self.body_j.p
         self.p_dot_j = self.body_j.p_dot
         self.r_j = self.body_j.r
