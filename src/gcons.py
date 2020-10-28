@@ -99,7 +99,7 @@ class GConDP1:
 
     def nu(self, t):
         # calculate nu, the RHS of the velocity equation
-        return self.prescribed_val.f_dot(t)
+        return [[self.prescribed_val.f_dot(t)]]
 
     def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
@@ -181,7 +181,7 @@ class GConDP2:
 
     def nu(self, t):
         # calculate nu, the RHS of the velocity equation
-        return self.prescribed_val.f_dot(t)
+        return [[self.prescribed_val.f_dot(t)]]
 
     def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
@@ -263,7 +263,7 @@ class GConD:
 
     def nu(self, t):
         # calculate nu, the RHS of the velocity equation
-        return self.prescribed_val.f_dot(t)
+        return [[self.prescribed_val.f_dot(t)]]
 
     def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
@@ -342,7 +342,7 @@ class GConCD:
 
     def nu(self, t):
         # calculate nu, the RHS of the velocity equation
-        return self.prescribed_val.f_dot(t)
+        return [[self.prescribed_val.f_dot(t)]]
 
     def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation

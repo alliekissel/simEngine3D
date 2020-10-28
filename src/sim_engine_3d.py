@@ -12,6 +12,7 @@ from newton_raphson import *
 
 import json as js
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 class SimEngine3D:
@@ -22,9 +23,8 @@ class SimEngine3D:
 
         self.init_system(filename)
 
-        self.history = {'r': [], 'p': [], 'r_dot': [], 'p_dot': [], 'r_ddot': [], 'p_ddot': []}
-        self.timestep = 0.001
-        self.tspan = 1
+        self.timestep = 0.01
+        self.tspan = 5
         if analysis == 0:
             self.kinematics_solver()
         else:
@@ -122,55 +122,141 @@ class SimEngine3D:
                 idx += 1
         return np.concatenate((Phi_q, Phi_euler), axis=0)
 
+    def get_nu(self, t):
+        nu_G = np.concatenate([con.nu(t) for con in self.constraint_list], axis=0)
+        nu_euler = np.zeros((self.n_bodies, 1))
+        return np.concatenate((nu_G, nu_euler), axis=0)
+
+    def get_gamma(self, t):
+        gamma_G = np.concatenate([con.gamma(t) for con in self.constraint_list], axis=0)
+        gamma_euler = np.zeros((self.n_bodies, 1))
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                gamma_euler[idx, :] = -2 * body.p_dot.T @ body.p_dot
+                idx += 1
+        return np.concatenate((gamma_G, gamma_euler), axis=0)
+
     def kinematics_solver(self):
         for body in self.bodies_list:
             if not body.is_ground:
                 self.n_bodies += 1
 
         N = int(self.tspan/self.timestep)
+        t_start = 0
         t_end = self.tspan
-        t_grid = np.linspace(0, t_end, N)
+        t_grid = np.linspace(t_start, t_end, N)
 
-        max_iters = 500
-        tol = 1e-2
-        # Set initial conditions
-        q_k = self.get_q()
-        Phi_k = self.get_phi(t=0)
+        max_iters = 50
+        tol = 1e-4
 
-        for t in t_grid:
+        q_0 = self.get_q()
+        Phi_q_0_inv = np.linalg.inv(self.get_phi_q())
+
+        # initialize position, velocity and acceleration storage arrays
+        r = np.zeros((N, 3))
+        r_dot = np.zeros((N, 3))
+        r_ddot = np.zeros((N, 3))
+        r[0, :] = q_0[0:3, 0].T
+        r_dot[0, :] = (Phi_q_0_inv @ self.get_nu(t_start))[0:3, 0].T
+        r_ddot[0, :] = (Phi_q_0_inv @ self.get_gamma(t_start))[0:3, 0].T
+
+        # Set initial conditions and begin time integration
+        q_k = q_0
+        for i, t in enumerate(t_grid):
             # perform Newton iteration at each time step
             # initialize the norm to be greater than the tolerance so loop begins
             delta_q_norm = 2 * tol
             iteration = 0
-            Phi_q_k = self.get_phi_q()
+
+            Phi_k = self.get_phi(t)
+            Phi_q_k_inv = np.linalg.inv(self.get_phi_q())
+            delta_q = Phi_q_k_inv @ Phi_k
+            q_k1 = q_k - delta_q
+
             while delta_q_norm > tol:
 
-                if iteration > max_iters:
+                if iteration >= max_iters:
                     print("Newton-Raphson has not converged after", str(max_iters), "iterations. Stopping.")
                     break
 
-                delta_q = np.linalg.solve(-Phi_q_k, Phi_k)
-                q_new = q_k + delta_q
-
-                q_k = q_new
+                q_k = q_k1
 
                 # update body's generalized coordinates
                 self.set_q(q_k)
 
                 # Update Phi, Phi_q for next iteration
                 Phi_k = self.get_phi(t)
+                Phi_q_k_inv = np.linalg.inv(self.get_phi_q())
+
+                delta_q = Phi_q_k_inv @ Phi_k
+                q_k1 = q_k - delta_q
 
                 # Calculate norm(delta_q) to check convergence
                 delta_q_norm = np.linalg.norm(delta_q)
                 iteration += 1
 
-            self.history['r'].append(body.r)
-            self.history['p'].append(body.p)
+            # update body's generalized coordinates to converged q
+            self.set_q(q_k1)
 
-        # velocity analysis
-        # acceleration analysis
-        print(self.history)
-        return self.history
+            # store position for this timestep
+            r[i, :] = q_k1[0:3, 0].T
+
+            # velocity analysis
+            q_dot = np.linalg.inv(self.get_phi_q()) @ self.get_nu(t)
+            r_dot[i, :] = q_dot[0:3, 0].T
+
+            # acceleration analysis
+            q_ddot = np.linalg.inv(self.get_phi_q()) @ self.get_gamma(t)
+            r_ddot[i, :] = q_ddot[0:3, 0].T
+
+        # plot position, velocity and acceleration for full time duration
+        # position
+        f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        ax1.plot(t_grid, r[:, 0])
+        ax1.set_xlabel('t [s]')
+        ax1.set_ylabel('X Position [m]')
+
+        ax2.plot(t_grid, r[:, 1])
+        ax2.set_xlabel('t [s]')
+        ax2.set_ylabel('Y Position [m]')
+
+        ax3.plot(t_grid, r[:, 2])
+        ax3.set_xlabel('t [s]')
+        ax3.set_ylabel('Z Position [m]')
+
+        # velocity
+        f_v, (ax1_v, ax2_v, ax3_v) = plt.subplots(3, 1, sharex=True)
+        ax1_v.plot(t_grid, r_dot[:, 0])
+        ax1_v.set_xlabel('t [s]')
+        ax1_v.set_ylabel('X Velocity [m/s]')
+
+        ax2_v.plot(t_grid, r_dot[:, 1])
+        ax2_v.set_xlabel('t [s]')
+        ax2_v.set_ylabel('Y Velocity [m/s]')
+
+        ax3_v.plot(t_grid, r_dot[:, 2])
+        ax3_v.set_xlabel('t [s]')
+        ax3_v.set_ylabel('Z Velocity [m/s]')
+
+        # acceleration
+        f_a, (ax1_a, ax2_a, ax3_a) = plt.subplots(3, 1, sharex=True)
+        ax1_a.plot(t_grid, r_ddot[:, 0])
+        ax1_a.set_xlabel('t [s]')
+        ax1_a.set_ylabel('X Acceleration [m/s^2]')
+
+        ax2_a.plot(t_grid, r_ddot[:, 1])
+        ax2_a.set_xlabel('t [s]')
+        ax2_a.set_ylabel('Y Acceleration [m/s^2]')
+
+        ax3_a.plot(t_grid, r_ddot[:, 2])
+        ax3_a.set_xlabel('t [s]')
+        ax3_a.set_ylabel('Z Acceleration [m/s^2]')
+
+        plt.show()
+        return
 
     def inverse_dynamics_solver(self):
         # perform inverse dynamics analysis
