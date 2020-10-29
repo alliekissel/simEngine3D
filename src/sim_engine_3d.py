@@ -23,6 +23,8 @@ class SimEngine3D:
 
         self.init_system(filename)
 
+        self.g = 9.81
+
         self.timestep = 0.01
         self.tspan = 5
         if analysis == 0:
@@ -62,7 +64,7 @@ class SimEngine3D:
         return self.timestep
 
     def set_q(self, q_new):
-        i = 0
+        idx = 0
         for body in self.bodies_list:
             if body.is_ground:
                 pass
@@ -70,28 +72,72 @@ class SimEngine3D:
                 # update generalized coordinates for bodies
                 rdim = 3
                 pdim = 4
-                r_start = i * (rdim + pdim)
+                r_start = idx * (rdim + pdim)
                 p_start = (r_start + pdim) - 1
                 body.r = q_new[r_start:r_start + rdim]
                 body.p = q_new[p_start:p_start + pdim]
-                i += 1
+                idx += 1
 
     def get_q(self):
-        #q = np.zeros((len(self.constraint_list) + self.n_bodies, 1))
+        r = np.zeros((3 * self.n_bodies, 1))
+        p = np.zeros((4 * self.n_bodies, 1))
         idx = 0
         for body in self.bodies_list:
             if body.is_ground:
                 pass
             else:
-                q = np.concatenate((body.r, body.p), axis=0)
-                # rdim = 3
-                # pdim = 4
-                # r_start = idx * (rdim + pdim)
-                # p_start = (r_start + pdim)-1
-                # q[r_start:r_start+rdim] = body.r[0:]
-                # q[p_start:p_start+pdim] = body.p[0:]
-                # idx += 1
-        return q
+                r[idx*3:idx*3 + 3] = body.r
+                p[idx*4:idx*4 + 4] = body.p
+                idx += 1
+        return r, p
+
+    def set_q_dot(self, r_dot, p_dot):
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                # update generalized coordinates for bodies
+                body.r_dot = r_dot[idx*3:idx*3 + 3]
+                body.p_dot = p_dot[idx*4:idx*4 + 4]
+                idx += 1
+
+    def get_q_dot(self):
+        r_dot = np.zeros((3 * self.n_bodies, 1))
+        p_dot = np.zeros((4 * self.n_bodies, 1))
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                r_dot[idx*3:idx*3 + 3] = body.r_dot
+                p_dot[idx*4:idx*4 + 4] = body.p_dot
+                idx += 1
+        return r_dot, p_dot
+
+    def set_q_ddot(self, r_ddot, p_ddot):
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                # update generalized coordinates for bodies
+                body.r_ddot = r_ddot[idx*3:idx*3 + 3]
+                body.p_ddot = p_ddot[idx*4:idx*4 + 4]
+                idx += 1
+
+    def get_q_ddot(self):
+        r_ddot = np.zeros((3 * self.n_bodies, 1))
+        p_ddot = np.zeros((4 * self.n_bodies, 1))
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                r_ddot[idx*3:idx*3 + 3] = body.r_ddot
+                p_ddot[idx*4:idx*4 + 4] = body.p_ddot
+                idx += 1
+        return r_ddot, p_ddot
 
     def get_phi(self, t):
         # includes all kinematic constraints
@@ -176,7 +222,7 @@ class SimEngine3D:
                 idx += 1
         return p_mat
 
-    def get_F_g(self, g):
+    def get_F_g(self):
         # return F when gravity is the only force
         f_g_mat = np.zeros((3*self.n_bodies, 1))
         idx = 0
@@ -185,7 +231,7 @@ class SimEngine3D:
                 pass
             else:
                 idx = idx * 3
-                f_g_mat[idx:idx+3] = np.array([[0], [0], [body.m*g]])
+                f_g_mat[idx:idx+3] = np.array([[0], [0], [body.m*self.g]])
                 idx += 1
         return f_g_mat
 
@@ -202,6 +248,56 @@ class SimEngine3D:
                 idx += 1
         return tau
 
+    def set_lambda(self, lam):
+        self.lam = lam
+
+    def set_lambda_p(self, lambda_p):
+        self.lambda_p = lambda_p
+
+    def residual(self, order, t):
+        if order == 1:
+            beta_0 = 1
+        elif order == 2:
+            beta_0 = 2/3
+        else:
+            print("BDF of order greater than 2 not implemented yet.")
+
+        h = self.timestep
+
+        nb = self.n_bodies
+        nc = len(self.constraint_list)
+
+        r_ddot, p_ddot = self.get_q_ddot()
+
+        g = np.zeros((nc + 8*nb, 1))
+        g[0:3*nb] = self.get_M() @ r_ddot + self.get_phi_q()[0:nc, 0:3].T @ self.lam - self.get_F_g()
+        g[3*nb:7*nb] = self.get_J_P() @ p_ddot + self.get_phi_q()[0:nc, 3:].T @ self.lam \
+                       + self.get_P().T @ self.lambda_p - self.get_tau()
+        g[7*nb:] = 1/(beta_0**2 * h**2) * self.get_phi(t)
+
+        return g
+
+    def psi(self):
+        M = self.get_M()
+        J_P = self.get_J_P()
+        P = self.get_P()
+
+        nc = len(self.constraint_list)
+        nb = self.n_bodies
+
+        # build Psi(nu), our quasi-newton iteration matrix
+        psi = np.zeros((nc + 8*nb, nc + 8*nb))
+        psi[0:3*nb, 0:3*nb] = M
+        psi[0:3*nb, 8*nb:] = self.get_phi_q()[0:nc, 0:3].T
+        psi[3*nb:7*nb, 3*nb:7*nb] = J_P
+        psi[3*nb:7*nb, 7*nb:8*nb] = P.T
+        psi[3*nb:7*nb, 8*nb:] = self.get_phi_q()[0:nc, 3:].T
+        psi[7*nb:8*nb, 3*nb:7*nb] = P
+        psi[8*nb:, 0:3*nb] = self.get_phi_q()[0:nc, 0:3]
+        psi[8*nb:, 3*nb:7*nb] = self.get_phi_q()[0:nc, 3:]
+
+        return psi
+
     def kinematics_solver(self):
         for body in self.bodies_list:
             if not body.is_ground:
@@ -215,7 +311,8 @@ class SimEngine3D:
         max_iters = 50
         tol = 1e-4
 
-        q_0 = self.get_q()
+        r_0, p_0 = self.get_q()
+        q_0 = np.vstack((r_0, p_0))
         Phi_q_0_inv = np.linalg.inv(self.get_phi_q())
 
         # initialize position, velocity and acceleration storage arrays
@@ -329,12 +426,12 @@ class SimEngine3D:
         # q, q_dot, q_ddot = self.kinematics_solver()
         return
 
-    def dynamics_solver(self, order=2):
+    def dynamics_solver(self, order=1):
         # putting model parameters here for now. @TODO: move to .mdl file or a setter function
         L = 2
         w = 0.05
         rho = 7800
-        g = 9.81
+        self.g = 9.81
         m = rho*2*L*w**2
         Jxx = 1/12*m*2*w**2
         Jyy = 1/12*m*((2*L)**2 + w**2)
@@ -352,45 +449,103 @@ class SimEngine3D:
         t_start = 0
         t_end = self.tspan
         t_grid = np.linspace(t_start, t_end, N)
-
         max_iters = 50
         tol = 1e-4
 
+        # ------------------------ INITIAL CONDITIONS -------------------------------------------------
         # solve for initial conditions, reference Lecture 17 slide 7
-        M = self.get_M()
-        J_P = self.get_J_P()
-        P = self.get_P()
-        F = self.get_F_g(g)
+        F = self.get_F_g()
         tau = self.get_tau()
         gamma_p = self.get_gamma(t_start)[(len(self.constraint_list) + self.n_bodies)-1:, :]
         gamma = self.get_gamma(t_start)[0:(len(self.constraint_list) + self.n_bodies)-1, :]
 
         nc = len(self.constraint_list)
         nb = self.n_bodies
-        # create full LHS matrix
-        eom_LHS = np.zeros((nc + 8*nb, nc + 8*nb))
-        eom_LHS[0:3*nb, 0:3*nb] = M
-        eom_LHS[0:3*nb, 8*nb:] = self.get_phi_q()[0:nc, 0:3].T
-        eom_LHS[3*nb:7*nb, 3*nb:7*nb] = J_P
-        eom_LHS[3*nb:7*nb, 7*nb:8*nb] = P.T
-        eom_LHS[3*nb:7*nb, 8*nb:] = self.get_phi_q()[0:nc, 3:].T
-        eom_LHS[7*nb:8*nb, 3*nb:7*nb] = P
-        eom_LHS[8*nb:, 0:3*nb] = self.get_phi_q()[0:nc, 0:3]
-        eom_LHS[8*nb:, 3*nb:7*nb] = self.get_phi_q()[0:nc, 3:]
 
-        # create full RHS matrix
+        # get initial psi
+        psi = self.psi()
+
+        # build full RHS matrix
         eom_RHS = np.zeros((nc + 8*nb, 1))
         eom_RHS[0:3*nb] = F
         eom_RHS[3*nb:7*nb] = tau
         eom_RHS[7*nb:8*nb] = gamma_p
         eom_RHS[8*nb:] = gamma
 
-        # solve to find initial accelerations and lagrange multipliers
-        acceleration_0 = np.linalg.solve(eom_LHS, eom_RHS)
-        r_ddot_0 = acceleration_0[0:3*nb]
-        p_ddot_0 = acceleration_0[3*nb:7*nb]
-        lambda_p_0 = acceleration_0[7*nb:8*nb]
-        lambda_0 = acceleration_0[8*nb:]
+        # solve to find initial accelerations and lagrange multipliers, vector z
+        z_0 = np.linalg.solve(psi, eom_RHS)
+        r_ddot_0 = z_0[0:3*nb]
+        p_ddot_0 = z_0[3*nb:7*nb]
+        self.set_q_ddot(r_ddot_0, p_ddot_0)
+        lambda_p_0 = z_0[7*nb:8*nb]
+        self.set_lambda_p(lambda_p_0)
+        lambda_0 = z_0[8*nb:]
+        self.set_lambda(lambda_0)
+
+        # ------------------------ BEGIN TIME EVOLUTION -------------------------------------------------
+        # solution storage arrays
+        for i, t in enumerate(t_grid):
+            # STAGE 0 - Prime new time step
+            r_n_0, p_n_0 = self.get_q()
+            r_dot_n_0, p_dot_n_0 = self.get_q_dot()
+            r_ddot_n_0, p_ddot_n_0 = self.get_q_ddot()
+            lam_n_0 = self.lam  #@TODO: generalize these to more bodies
+            lambda_p_0 = self.lambda_p
+
+            # nu = 0
+            z = np.zeros((nc + 8*nb, 1))
+            z[0:3*nb] = r_ddot_n_0
+            z[3*nb:7*nb] = p_ddot_0
+            z[7*nb:8*nb] = lambda_p_0
+            z[8*nb:] = lam_n_0
+
+            # begin BDF
+            iteration = 0
+            delta_norm = 2*tol  # initialize larger than tolerance so loop begins
+            while delta_norm > tol:
+                if iteration >= max_iters:
+                    print("Solution has not converged after", str(max_iters), "iterations. Stopping.")
+                    break
+
+                # STAGE 1 - Compute position and velocity using BDF and most recent accelerations
+                if order == 1:
+                    beta_0 = 1
+                elif order == 2:
+                    beta_0 = 2 / 3
+                else:
+                    print("BDF of order greater than 2 not implemented yet.")
+                # r_n
+                # p_n
+                # self.set_q(np.vstack((r_n, p_n))
+                # r_dot_n
+                # p_dot_n
+                # self.set_q_dot(r_dot_n, p_dot_n)
+
+                # STAGE 2 - Compute the residual, g_n
+                gn = self.residual(order, t)
+
+                # STAGE 3 - Solve linear system Psi*delta z = -gn for correction delta z
+                delta = np.linalg.solve(self.psi(), -gn)
+
+                # STAGE 4 Improve quality of the approximate solution, z^(nu+1)= z^(nu) + delta z^(nu)
+                z = z + delta
+
+                r_ddot = z[0:3*nb]
+                p_ddot = z[3*nb:7*nb]
+                self.set_q_ddot(r_ddot, p_ddot)
+                lambda_p = z[7*nb:8*nb]
+                self.set_lambda_p(lambda_p)
+                lam = z[8*nb:]
+                self.set_lambda(lam)
+
+
+                # STAGE 5 - Set nu = nu + 1, exit loop if norm of correction is small enough
+                delta_norm = np.linalg.norm(delta)
+                iteration += 1
+
+            # STAGE 6 - Store solution and move onto next time step
+            # set r, p, lam, lambda_p so that n_0 guess is correct
+
 
 
 
@@ -429,7 +584,14 @@ class RigidBody:
             self.body_id = body_dict['id']
             self.r = np.array([body_dict['r']]).T
             self.r_dot = np.array([body_dict['r_dot']]).T
+            self.r_ddot = np.array([[0],
+                                    [0],
+                                    [0]])
             self.p = np.array([body_dict['p']]).T
             self.p_dot = np.array([body_dict['p_dot']]).T
+            self.p_ddot = np.array([[0],
+                                    [0],
+                                    [0],
+                                    [0]])
             self.m = 0
             self.J = 0
