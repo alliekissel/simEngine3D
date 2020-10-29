@@ -37,8 +37,15 @@ def g_mat(p):
                   [p[2][0]],
                   [p[3][0]]])
     e_tilde = skew(e)
-    return np.concatenate((-e, e_tilde), axis=1)
+    return np.concatenate((-e, -e_tilde+e_0*np.eye(3)), axis=1)
 
+def g_dot_mat(p_dot):
+    e_dot_0 = p_dot[0][0]
+    e_dot = np.array([[p_dot[1][0]],
+                      [p_dot[2][0]],
+                      [p_dot[3][0]]])
+    e_dot_tilde = skew(e_dot)
+    return np.concatenate((-e_dot, -e_dot_tilde+e_dot_0*np.eye(3)), axis=1)
 
 def b_mat(p, a_bar):
     e_0 = p[0][0]

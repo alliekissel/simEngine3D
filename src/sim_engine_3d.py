@@ -28,7 +28,7 @@ class SimEngine3D:
         if analysis == 0:
             self.kinematics_solver()
         else:
-            self.inverse_dynamics_solver()
+            self.dynamics_solver()
 
     def init_system(self, filename):
         # setup initial system based on model parameters
@@ -139,6 +139,69 @@ class SimEngine3D:
                 idx += 1
         return np.concatenate((gamma_G, gamma_euler), axis=0)
 
+    def get_M(self):
+        m_mat = np.zeros((3*self.n_bodies, 3*self.n_bodies))
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                idx = idx*3
+                m_mat[idx:idx+3, idx:idx+3] = body.m*np.eye(3)
+                idx += 1
+        return m_mat
+
+    def get_J_P(self):
+        # J_P reference Lecture 13 slide 15
+        j_p_mat = np.zeros((4*self.n_bodies, 4*self.n_bodies))
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                idx = idx * 4
+                G = g_mat(body.p)
+                j_p_mat[idx:idx + 4, idx:idx + 4] = 4 * G.T @ body.J @ G
+                idx += 1
+        return j_p_mat
+
+    def get_P(self):
+        p_mat = np.zeros((self.n_bodies, 4*self.n_bodies))
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                p_mat[idx, :] = body.p.T
+                idx += 1
+        return p_mat
+
+    def get_F_g(self, g):
+        # return F when gravity is the only force
+        f_g_mat = np.zeros((3*self.n_bodies, 1))
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                idx = idx * 3
+                f_g_mat[idx:idx+3] = np.array([[0], [0], [body.m*g]])
+                idx += 1
+        return f_g_mat
+
+    def get_tau(self):
+        tau = np.zeros((4 * self.n_bodies, 1))
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                idx = idx * 4
+                G_dot = g_dot_mat(body.p_dot)
+                tau[idx:idx + 4] = 8 * G_dot.T @ body.J @ G_dot @ body.p
+                idx += 1
+        return tau
+
     def kinematics_solver(self):
         for body in self.bodies_list:
             if not body.is_ground:
@@ -171,6 +234,7 @@ class SimEngine3D:
             delta_q_norm = 2 * tol
             iteration = 0
 
+            # this is the initial guess for Newton iteration
             Phi_k = self.get_phi(t)
             Phi_q_k_inv = np.linalg.inv(self.get_phi_q())
             delta_q = Phi_q_k_inv @ Phi_k
@@ -191,11 +255,13 @@ class SimEngine3D:
                 Phi_k = self.get_phi(t)
                 Phi_q_k_inv = np.linalg.inv(self.get_phi_q())
 
+                # Newton step
                 delta_q = Phi_q_k_inv @ Phi_k
                 q_k1 = q_k - delta_q
 
                 # Calculate norm(delta_q) to check convergence
                 delta_q_norm = np.linalg.norm(delta_q)
+
                 iteration += 1
 
             # update body's generalized coordinates to converged q
@@ -263,6 +329,81 @@ class SimEngine3D:
         # q, q_dot, q_ddot = self.kinematics_solver()
         return
 
+    def dynamics_solver(self, order=2):
+        # putting model parameters here for now. @TODO: move to .mdl file or a setter function
+        L = 2
+        w = 0.05
+        rho = 7800
+        g = 9.81
+        m = rho*2*L*w**2
+        Jxx = 1/12*m*2*w**2
+        Jyy = 1/12*m*((2*L)**2 + w**2)
+        Jzz = Jyy
+        J = np.diag(np.array([Jxx, Jyy, Jzz]))
+
+        for body in self.bodies_list:
+            if not body.is_ground:
+                body.m = m
+                body.J = J
+                self.n_bodies += 1
+
+        # simulation parameters
+        N = int(self.tspan/self.timestep)
+        t_start = 0
+        t_end = self.tspan
+        t_grid = np.linspace(t_start, t_end, N)
+
+        max_iters = 50
+        tol = 1e-4
+
+        # solve for initial conditions, reference Lecture 17 slide 7
+        M = self.get_M()
+        J_P = self.get_J_P()
+        P = self.get_P()
+        F = self.get_F_g(g)
+        tau = self.get_tau()
+        gamma_p = self.get_gamma(t_start)[(len(self.constraint_list) + self.n_bodies)-1:, :]
+        gamma = self.get_gamma(t_start)[0:(len(self.constraint_list) + self.n_bodies)-1, :]
+
+        nc = len(self.constraint_list)
+        nb = self.n_bodies
+        # create full LHS matrix
+        eom_LHS = np.zeros((nc + 8*nb, nc + 8*nb))
+        eom_LHS[0:3*nb, 0:3*nb] = M
+        eom_LHS[0:3*nb, 8*nb:] = self.get_phi_q()[0:nc, 0:3].T
+        eom_LHS[3*nb:7*nb, 3*nb:7*nb] = J_P
+        eom_LHS[3*nb:7*nb, 7*nb:8*nb] = P.T
+        eom_LHS[3*nb:7*nb, 8*nb:] = self.get_phi_q()[0:nc, 3:].T
+        eom_LHS[7*nb:8*nb, 3*nb:7*nb] = P
+        eom_LHS[8*nb:, 0:3*nb] = self.get_phi_q()[0:nc, 0:3]
+        eom_LHS[8*nb:, 3*nb:7*nb] = self.get_phi_q()[0:nc, 3:]
+
+        # create full RHS matrix
+        eom_RHS = np.zeros((nc + 8*nb, 1))
+        eom_RHS[0:3*nb] = F
+        eom_RHS[3*nb:7*nb] = tau
+        eom_RHS[7*nb:8*nb] = gamma_p
+        eom_RHS[8*nb:] = gamma
+
+        # solve to find initial accelerations and lagrange multipliers
+        acceleration_0 = np.linalg.solve(eom_LHS, eom_RHS)
+        r_ddot_0 = acceleration_0[0:3*nb]
+        p_ddot_0 = acceleration_0[3*nb:7*nb]
+        lambda_p_0 = acceleration_0[7*nb:8*nb]
+        lambda_0 = acceleration_0[8*nb:]
+
+
+
+
+
+
+
+
+
+
+
+        return
+
 
 class RigidBody:
     def __init__(self, body_dict):
@@ -290,3 +431,5 @@ class RigidBody:
             self.r_dot = np.array([body_dict['r_dot']]).T
             self.p = np.array([body_dict['p']]).T
             self.p_dot = np.array([body_dict['p_dot']]).T
+            self.m = 0
+            self.J = 0
