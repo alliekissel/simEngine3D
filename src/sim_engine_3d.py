@@ -25,6 +25,9 @@ class SimEngine3D:
 
         self.g = 9.81
 
+        self.lam = 0
+        self.lambda_p = 0
+
         self.timestep = 0.01
         self.tspan = 5
         if analysis == 0:
@@ -278,23 +281,25 @@ class SimEngine3D:
         return g
 
     def psi(self):
+        nc = len(self.constraint_list)
+        nb = self.n_bodies
+
         M = self.get_M()
         J_P = self.get_J_P()
         P = self.get_P()
-
-        nc = len(self.constraint_list)
-        nb = self.n_bodies
+        Phi_r = self.get_phi_q()[0:nc, 0:3]
+        Phi_p = self.get_phi_q()[0:nc, 3:]
 
         # build Psi(nu), our quasi-newton iteration matrix
         psi = np.zeros((nc + 8*nb, nc + 8*nb))
         psi[0:3*nb, 0:3*nb] = M
-        psi[0:3*nb, 8*nb:] = self.get_phi_q()[0:nc, 0:3].T
+        psi[0:3*nb, 8*nb:] = Phi_r.T
         psi[3*nb:7*nb, 3*nb:7*nb] = J_P
         psi[3*nb:7*nb, 7*nb:8*nb] = P.T
-        psi[3*nb:7*nb, 8*nb:] = self.get_phi_q()[0:nc, 3:].T
+        psi[3*nb:7*nb, 8*nb:] = Phi_p.T
         psi[7*nb:8*nb, 3*nb:7*nb] = P
-        psi[8*nb:, 0:3*nb] = self.get_phi_q()[0:nc, 0:3]
-        psi[8*nb:, 3*nb:7*nb] = self.get_phi_q()[0:nc, 3:]
+        psi[8*nb:, 0:3*nb] = Phi_r
+        psi[8*nb:, 3*nb:7*nb] = Phi_p
 
         return psi
 
@@ -450,7 +455,8 @@ class SimEngine3D:
         t_end = self.tspan
         t_grid = np.linspace(t_start, t_end, N)
         max_iters = 50
-        tol = 1e-4
+        tol = 1e-2
+        h = self.timestep
 
         # ------------------------ INITIAL CONDITIONS -------------------------------------------------
         # solve for initial conditions, reference Lecture 17 slide 7
@@ -482,24 +488,68 @@ class SimEngine3D:
         lambda_0 = z_0[8*nb:]
         self.set_lambda(lambda_0)
 
+        print(r_ddot_0)
+        print(p_ddot_0)
+        print(lambda_p_0)
+        print(lambda_0)
+
         # ------------------------ BEGIN TIME EVOLUTION -------------------------------------------------
         # solution storage arrays
+        r_0, p_0 = self.get_q()
+        r_dot_0, p_dot_0 = self.get_q_dot()
+
+        r_sol = np.zeros((N, 3))
+        r_dot_sol = np.zeros((N, 3))
+        r_ddot_sol = np.zeros((N, 3))
+        r_sol[0, :] = r_0.T
+        r_dot_sol[0, :] = r_dot_0.T
+        r_ddot_sol[0, :] = r_ddot_0.T
+
+        p_sol = np.zeros((N, 4))
+        p_dot_sol = np.zeros((N, 4))
+        p_ddot_sol = np.zeros((N, 4))
+        p_sol[0, :] = p_0.T
+        p_dot_sol[0, :] = p_dot_0.T
+        p_ddot_sol[0, :] = p_ddot_0.T
+
         for i, t in enumerate(t_grid):
+            # we already have our initial conditions. want to start at i = 1
+            if i == 0:
+                continue
+
             # STAGE 0 - Prime new time step
-            r_n_0, p_n_0 = self.get_q()
-            r_dot_n_0, p_dot_n_0 = self.get_q_dot()
-            r_ddot_n_0, p_ddot_n_0 = self.get_q_ddot()
-            lam_n_0 = self.lam  #@TODO: generalize these to more bodies
-            lambda_p_0 = self.lambda_p
+            r_ddot, p_ddot = self.get_q_ddot()
+            lam = self.lam  #@TODO: generalize these to more bodies
+            lambda_p = self.lambda_p
 
             # nu = 0
             z = np.zeros((nc + 8*nb, 1))
-            z[0:3*nb] = r_ddot_n_0
-            z[3*nb:7*nb] = p_ddot_0
-            z[7*nb:8*nb] = lambda_p_0
-            z[8*nb:] = lam_n_0
+            z[0:3*nb] = r_ddot
+            z[3*nb:7*nb] = p_ddot
+            z[7*nb:8*nb] = lambda_p
+            z[8*nb:] = lam
 
-            # begin BDF
+            if order == 2 and i == 1:
+                # seed BDF 1
+                continue
+
+            # STAGE 1 - Compute position and velocity using BDF and most recent accelerations ---------------
+            if order == 1:
+                beta_0 = 1
+                c_r_dot = r_dot_sol[i - 1, :]
+                c_p_dot = p_dot_sol[i - 1, :]
+                c_r = r_sol[i - 1, :] + beta_0 * h * c_r_dot
+                c_p = p_sol[i - 1, :] + beta_0 * h * c_p_dot
+
+            elif order == 2:
+                beta_0 = 2 / 3
+                c_r_dot = 4 / 3 * r_dot_sol[i - 1, :] - 1 / 3 * r_dot_sol[i - 2, :]
+                c_p_dot = 4 / 3 * p_dot_sol[i - 1, :] - 1 / 3 * p_dot_sol[i - 2, :]
+                c_r = 4 / 3 * r_sol[i - 1, :] - 1 / 3 * r_sol[i - 2, :] + beta_0 * h * c_r_dot
+                c_p = 4 / 3 * p_sol[i - 1, :] - 1 / 3 * p_sol[i - 2, :] + beta_0 * h * c_p_dot
+            else:
+                print("BDF of order greater than 2 not implemented yet.")
+
             iteration = 0
             delta_norm = 2*tol  # initialize larger than tolerance so loop begins
             while delta_norm > tol:
@@ -507,27 +557,25 @@ class SimEngine3D:
                     print("Solution has not converged after", str(max_iters), "iterations. Stopping.")
                     break
 
-                # STAGE 1 - Compute position and velocity using BDF and most recent accelerations
-                if order == 1:
-                    beta_0 = 1
-                elif order == 2:
-                    beta_0 = 2 / 3
-                else:
-                    print("BDF of order greater than 2 not implemented yet.")
-                # r_n
-                # p_n
-                # self.set_q(np.vstack((r_n, p_n))
-                # r_dot_n
-                # p_dot_n
-                # self.set_q_dot(r_dot_n, p_dot_n)
+                # get updated level 0 and level 1 values
+                r, p = self.get_q()
+                r_dot, p_dot = self.get_q_dot()
 
-                # STAGE 2 - Compute the residual, g_n
+                # STAGE 1 - Compute position and velocity using BDF and most recent accelerations ---------------
+                r_n = c_r + beta_0 ** 2 * h ** 2 * r_ddot.T
+                p_n = c_p + beta_0 ** 2 * h ** 2 * p_ddot.T
+                self.set_q(np.vstack((r_n.T, p_n.T)))
+                r_dot_n = c_r_dot + beta_0 * h * r_ddot.T
+                p_dot_n = c_p_dot + beta_0 * h * p_ddot.T
+                self.set_q_dot(r_dot_n.T, p_dot_n.T)
+
+                # STAGE 2 - Compute the residual, g_n -----------------------------------------------------------
                 gn = self.residual(order, t)
 
-                # STAGE 3 - Solve linear system Psi*delta z = -gn for correction delta z
+                # STAGE 3 - Solve linear system Psi*delta z = -gn for correction delta z ------------------------
                 delta = np.linalg.solve(self.psi(), -gn)
 
-                # STAGE 4 Improve quality of the approximate solution, z^(nu+1)= z^(nu) + delta z^(nu)
+                # STAGE 4 Improve quality of the approximate solution, z^(nu+1)= z^(nu) + delta z^(nu) ----------
                 z = z + delta
 
                 r_ddot = z[0:3*nb]
@@ -539,23 +587,72 @@ class SimEngine3D:
                 self.set_lambda(lam)
 
 
-                # STAGE 5 - Set nu = nu + 1, exit loop if norm of correction is small enough
+                # STAGE 5 - Set nu = nu + 1, exit loop if norm of correction is small enough --------------------
                 delta_norm = np.linalg.norm(delta)
                 iteration += 1
 
-            # STAGE 6 - Store solution and move onto next time step
+            # STAGE 6 - Store solution and move onto next time step ---------------------------------------------
             # set r, p, lam, lambda_p so that n_0 guess is correct
+            print(lam)
+            r_n = c_r + beta_0 ** 2 * h ** 2 * r_ddot.T
+            p_n = c_p + beta_0 ** 2 * h ** 2 * p_ddot.T
+            self.set_q(np.vstack((r_n.T, p_n.T)))
+            r_dot_n = c_r_dot + beta_0 * h * r_ddot.T
+            p_dot_n = c_p_dot + beta_0 * h * p_ddot.T
+            self.set_q_dot(r_dot_n.T, p_dot_n.T)
 
+            # store solutions for plotting
+            r_sol[i, :] = r_n
+            r_dot_sol[i, :] = r_dot_n
+            r_ddot_sol[i, :] = r_ddot.T
+            p_sol[i, :] = p_n
+            p_dot_sol[i, :] = p_dot_n
+            p_ddot_sol[i, :] = p_ddot.T
 
+        # plot position, velocity and acceleration for full time duration
+        # position
+        f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        ax1.plot(t_grid, r_sol[:, 0])
+        ax1.set_xlabel('t [s]')
+        ax1.set_ylabel('X Position [m]')
 
+        ax2.plot(t_grid, r_sol[:, 1])
+        ax2.set_xlabel('t [s]')
+        ax2.set_ylabel('Y Position [m]')
 
+        ax3.plot(t_grid, r_sol[:, 2])
+        ax3.set_xlabel('t [s]')
+        ax3.set_ylabel('Z Position [m]')
 
+        # velocity
+        f_v, (ax1_v, ax2_v, ax3_v) = plt.subplots(3, 1, sharex=True)
+        ax1_v.plot(t_grid, r_dot_sol[:, 0])
+        ax1_v.set_xlabel('t [s]')
+        ax1_v.set_ylabel('X Velocity [m/s]')
 
+        ax2_v.plot(t_grid, r_dot_sol[:, 1])
+        ax2_v.set_xlabel('t [s]')
+        ax2_v.set_ylabel('Y Velocity [m/s]')
 
+        ax3_v.plot(t_grid, r_dot_sol[:, 2])
+        ax3_v.set_xlabel('t [s]')
+        ax3_v.set_ylabel('Z Velocity [m/s]')
 
+        # acceleration
+        f_a, (ax1_a, ax2_a, ax3_a) = plt.subplots(3, 1, sharex=True)
+        ax1_a.plot(t_grid, r_ddot_sol[:, 0])
+        ax1_a.set_xlabel('t [s]')
+        ax1_a.set_ylabel('X Acceleration [m/s^2]')
 
+        ax2_a.plot(t_grid, r_ddot_sol[:, 1])
+        ax2_a.set_xlabel('t [s]')
+        ax2_a.set_ylabel('Y Acceleration [m/s^2]')
 
+        ax3_a.plot(t_grid, r_ddot_sol[:, 2])
+        ax3_a.set_xlabel('t [s]')
+        ax3_a.set_ylabel('Z Acceleration [m/s^2]')
 
+        plt.show()
 
         return
 
