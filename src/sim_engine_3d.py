@@ -303,6 +303,21 @@ class SimEngine3D:
 
         return psi
 
+    def reaction_torque(self):
+        nc = len(self.constraint_list)
+        nb = self.n_bodies
+        Phi_p = self.get_phi_q()[0:nc, 3:]  # this isn't going to be right with more than one body
+        idx = 0
+        for body in self.bodies_list:
+            if body.is_ground:
+                pass
+            else:
+                pi = 1 / 2 * Phi_p @ e_mat(body.p).T
+                torque = -pi.T @ self.lam
+                idx += 1
+
+        return torque
+
     def kinematics_solver(self):
         for body in self.bodies_list:
             if not body.is_ground:
