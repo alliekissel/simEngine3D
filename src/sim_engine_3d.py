@@ -31,7 +31,7 @@ class SimEngine3D:
         self.lambda_p = 0
 
         self.timestep = 0.01
-        self.tspan = 5
+        self.tspan = 10
         if analysis == 0:
             self.kinematics_solver()
         else:
@@ -672,10 +672,16 @@ class SimEngine3D:
         ax3.set_ylabel('Z Omega')
 
         # plot torque for full time duration
-        f_torque, ax = plt.subplots(1, 1, sharex=True)
-        ax.plot(t_grid, torque_sol[:, 0])
-        ax.set_xlabel('t [s]')
-        ax.set_ylabel('Reaction torque')
+        f_torque, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        ax1.plot(t_grid, torque_sol[:, 0])
+        ax1.set_xlabel('t [s]')
+        ax1.set_ylabel('X Reaction torque')
+        ax2.plot(t_grid, torque_sol[:, 1])
+        ax2.set_xlabel('t [s]')
+        ax2.set_ylabel('Y Reaction torque')
+        ax3.plot(t_grid, torque_sol[:, 2])
+        ax3.set_xlabel('t [s]')
+        ax3.set_ylabel('Z Reaction torque')
 
         plt.show()
 
