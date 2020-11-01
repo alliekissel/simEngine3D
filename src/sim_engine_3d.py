@@ -223,7 +223,7 @@ class SimEngine3D:
             if body.is_ground:
                 pass
             else:
-                p_mat[idx, :] = body.p.T
+                p_mat[idx, idx:idx + 4] = body.p.T
                 idx += 1
         return p_mat
 
@@ -289,8 +289,8 @@ class SimEngine3D:
         M = self.get_M()
         J_P = self.get_J_P()
         P = self.get_P()
-        Phi_r = self.get_phi_q()[0:nc, 0:3]
-        Phi_p = self.get_phi_q()[0:nc, 3:]
+        Phi_r = self.get_phi_q()[0:nc, 0:3*nb]
+        Phi_p = self.get_phi_q()[0:nc, 3*nb:]
 
         # build Psi(nu), our quasi-newton iteration matrix
         psi = np.zeros((nc + 8*nb, nc + 8*nb))
@@ -482,7 +482,7 @@ class SimEngine3D:
         F = self.get_F_g()
         tau = self.get_tau()
         gamma_p = self.get_gamma(t_start)[(len(self.constraint_list) + self.n_bodies)-1:, :]
-        gamma = self.get_gamma(t_start)[0:(len(self.constraint_list) + self.n_bodies)-1, :]
+        gamma = self.get_gamma(t_start)[0:len(self.constraint_list), :]
 
         nc = len(self.constraint_list)
         nb = self.n_bodies
