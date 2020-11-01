@@ -29,6 +29,21 @@ def rotation(p):
     e_tilde = skew(e)
     return (2*e_0 ** 2 - 1) * np.eye(3) + 2 * (e @ e.T + e_0 * e_tilde)
 
+def omega(p, p_ddot):
+    E = e_mat(p)
+    return 2 * (E @ p_ddot)
+
+def omega_bar(p, p_dot):
+    G = g_mat(p)
+    return 2 * (G @ p_dot)
+
+def e_mat(p):
+    e_0 = p[0][0]
+    e = np.array([[p[1][0]],
+                  [p[2][0]],
+                  [p[3][0]]])
+    e_tilde = skew(e)
+    return np.concatenate((-e, e_tilde + e_0 * np.eye(3)), axis=1)
 
 def g_mat(p):
     """ Function to create a G matrix from the Euler parameters """
