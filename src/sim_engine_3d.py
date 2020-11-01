@@ -488,11 +488,6 @@ class SimEngine3D:
         lambda_0 = z_0[8*nb:]
         self.set_lambda(lambda_0)
 
-        print(r_ddot_0)
-        print(p_ddot_0)
-        print(lambda_p_0)
-        print(lambda_0)
-
         # ------------------------ BEGIN TIME EVOLUTION -------------------------------------------------
         # solution storage arrays
         r_0, p_0 = self.get_q()
@@ -531,24 +526,28 @@ class SimEngine3D:
 
             if order == 2 and i == 1:
                 # seed BDF 1
-                continue
-
-            # STAGE 1 - Compute position and velocity using BDF and most recent accelerations ---------------
-            if order == 1:
                 beta_0 = 1
-                c_r_dot = r_dot_sol[i - 1, :]
-                c_p_dot = p_dot_sol[i - 1, :]
-                c_r = r_sol[i - 1, :] + beta_0 * h * c_r_dot
-                c_p = p_sol[i - 1, :] + beta_0 * h * c_p_dot
-
-            elif order == 2:
-                beta_0 = 2 / 3
-                c_r_dot = 4 / 3 * r_dot_sol[i - 1, :] - 1 / 3 * r_dot_sol[i - 2, :]
-                c_p_dot = 4 / 3 * p_dot_sol[i - 1, :] - 1 / 3 * p_dot_sol[i - 2, :]
-                c_r = 4 / 3 * r_sol[i - 1, :] - 1 / 3 * r_sol[i - 2, :] + beta_0 * h * c_r_dot
-                c_p = 4 / 3 * p_sol[i - 1, :] - 1 / 3 * p_sol[i - 2, :] + beta_0 * h * c_p_dot
+                c_r_dot = np.array([r_dot_sol[i - 1, :]]).T
+                c_p_dot = np.array([p_dot_sol[i - 1, :]]).T
+                c_r = np.array([r_sol[i - 1, :]]).T + beta_0 * h * c_r_dot
+                c_p = np.array([p_sol[i - 1, :]]).T + beta_0 * h * c_p_dot
             else:
-                print("BDF of order greater than 2 not implemented yet.")
+                # STAGE 1 - Compute position and velocity using BDF and most recent accelerations ---------------
+                if order == 1:
+                    beta_0 = 1
+                    c_r_dot = np.array([r_dot_sol[i - 1, :]]).T
+                    c_p_dot = np.array([p_dot_sol[i - 1, :]]).T
+                    c_r = np.array([r_sol[i - 1, :]]).T + beta_0 * h * c_r_dot
+                    c_p = np.array([p_sol[i - 1, :]]).T + beta_0 * h * c_p_dot
+
+                elif order == 2:
+                    beta_0 = 2 / 3
+                    c_r_dot = 4 / 3 * r_dot_sol[i - 1, :].T - 1 / 3 * r_dot_sol[i - 2, :].T
+                    c_p_dot = 4 / 3 * p_dot_sol[i - 1, :].T - 1 / 3 * p_dot_sol[i - 2, :].T
+                    c_r = 4 / 3 * r_sol[i - 1, :].T - 1 / 3 * r_sol[i - 2, :].T + beta_0 * h * c_r_dot
+                    c_p = 4 / 3 * p_sol[i - 1, :].T - 1 / 3 * p_sol[i - 2, :].T + beta_0 * h * c_p_dot
+                else:
+                    print("BDF of order greater than 2 not implemented yet.")
 
             iteration = 0
             delta_norm = 2*tol  # initialize larger than tolerance so loop begins
@@ -562,12 +561,12 @@ class SimEngine3D:
                 r_dot, p_dot = self.get_q_dot()
 
                 # STAGE 1 - Compute position and velocity using BDF and most recent accelerations ---------------
-                r_n = c_r + beta_0 ** 2 * h ** 2 * r_ddot.T
-                p_n = c_p + beta_0 ** 2 * h ** 2 * p_ddot.T
-                self.set_q(np.vstack((r_n.T, p_n.T)))
-                r_dot_n = c_r_dot + beta_0 * h * r_ddot.T
-                p_dot_n = c_p_dot + beta_0 * h * p_ddot.T
-                self.set_q_dot(r_dot_n.T, p_dot_n.T)
+                r_n = c_r + beta_0 ** 2 * h ** 2 * r_ddot
+                p_n = c_p + beta_0 ** 2 * h ** 2 * p_ddot
+                self.set_q(np.concatenate((r_n, p_n), axis=0))
+                r_dot_n = c_r_dot + beta_0 * h * r_ddot
+                p_dot_n = c_p_dot + beta_0 * h * p_ddot
+                self.set_q_dot(r_dot_n, p_dot_n)
 
                 # STAGE 2 - Compute the residual, g_n -----------------------------------------------------------
                 gn = self.residual(order, t)
@@ -593,20 +592,19 @@ class SimEngine3D:
 
             # STAGE 6 - Store solution and move onto next time step ---------------------------------------------
             # set r, p, lam, lambda_p so that n_0 guess is correct
-            print(lam)
-            r_n = c_r + beta_0 ** 2 * h ** 2 * r_ddot.T
-            p_n = c_p + beta_0 ** 2 * h ** 2 * p_ddot.T
-            self.set_q(np.vstack((r_n.T, p_n.T)))
-            r_dot_n = c_r_dot + beta_0 * h * r_ddot.T
-            p_dot_n = c_p_dot + beta_0 * h * p_ddot.T
-            self.set_q_dot(r_dot_n.T, p_dot_n.T)
+            r_n = c_r + beta_0 ** 2 * h ** 2 * r_ddot
+            p_n = c_p + beta_0 ** 2 * h ** 2 * p_ddot
+            self.set_q(np.concatenate((r_n, p_n), axis=0))
+            r_dot_n = c_r_dot + beta_0 * h * r_ddot
+            p_dot_n = c_p_dot + beta_0 * h * p_ddot
+            self.set_q_dot(r_dot_n, p_dot_n)
 
             # store solutions for plotting
-            r_sol[i, :] = r_n
-            r_dot_sol[i, :] = r_dot_n
+            r_sol[i, :] = r_n.T
+            r_dot_sol[i, :] = r_dot_n.T
             r_ddot_sol[i, :] = r_ddot.T
-            p_sol[i, :] = p_n
-            p_dot_sol[i, :] = p_dot_n
+            p_sol[i, :] = p_n.T
+            p_dot_sol[i, :] = p_dot_n.T
             p_ddot_sol[i, :] = p_ddot.T
 
         # plot position, velocity and acceleration for full time duration
