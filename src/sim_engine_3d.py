@@ -4,15 +4,17 @@
 
 import sys
 import pathlib as pl
+
 src_folder = pl.Path('./src/')
 sys.path.append(str(src_folder))
 
 from gcons import *
-from newton_raphson import *
 
 import json as js
 import numpy as np
 import matplotlib.pyplot as plt
+
+import time
 
 
 class SimEngine3D:
@@ -473,6 +475,8 @@ class SimEngine3D:
         tol = 1e-2
         h = self.timestep
 
+        start = time.time()
+
         # ------------------------ INITIAL CONDITIONS -------------------------------------------------
         # solve for initial conditions, reference Lecture 17 slide 7
         F = self.get_F_g()
@@ -521,6 +525,12 @@ class SimEngine3D:
         p_sol[0, :] = p_0.T
         p_dot_sol[0, :] = p_dot_0.T
         p_ddot_sol[0, :] = p_ddot_0.T
+
+        omega_sol = np.zeros((N, 3))
+        omega_sol[0, :] = omega(p_0, p_ddot_0).T
+
+        torque_sol = np.zeros((N, 3))
+        torque_sol[0, :] = self.reaction_torque().T
 
         for i, t in enumerate(t_grid):
             # we already have our initial conditions. want to start at i = 1
@@ -614,6 +624,12 @@ class SimEngine3D:
             p_dot_n = c_p_dot + beta_0 * h * p_ddot
             self.set_q_dot(r_dot_n, p_dot_n)
 
+            # calculate omega at this time step
+            omega_sol[i, :] = omega(p_n, p_ddot).T
+
+            # calculate reaction torque at this time step
+            torque_sol[i, :] = self.reaction_torque().T
+
             # store solutions for plotting
             r_sol[i, :] = r_n.T
             r_dot_sol[i, :] = r_dot_n.T
@@ -622,7 +638,10 @@ class SimEngine3D:
             p_dot_sol[i, :] = p_dot_n.T
             p_ddot_sol[i, :] = p_ddot.T
 
-        # plot position, velocity and acceleration for full time duration
+        end = time.time()
+        print("Simulation time:", (end-start))
+
+        # plot x, y, z position for full time duration
         # position
         f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
         ax1.plot(t_grid, r_sol[:, 0])
@@ -637,33 +656,26 @@ class SimEngine3D:
         ax3.set_xlabel('t [s]')
         ax3.set_ylabel('Z Position [m]')
 
-        # velocity
-        f_v, (ax1_v, ax2_v, ax3_v) = plt.subplots(3, 1, sharex=True)
-        ax1_v.plot(t_grid, r_dot_sol[:, 0])
-        ax1_v.set_xlabel('t [s]')
-        ax1_v.set_ylabel('X Velocity [m/s]')
+        # plot omega for full time duration
+        # position
+        f_omega, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        ax1.plot(t_grid, omega_sol[:, 0])
+        ax1.set_xlabel('t [s]')
+        ax1.set_ylabel('X Omega')
 
-        ax2_v.plot(t_grid, r_dot_sol[:, 1])
-        ax2_v.set_xlabel('t [s]')
-        ax2_v.set_ylabel('Y Velocity [m/s]')
+        ax2.plot(t_grid, omega_sol[:, 1])
+        ax2.set_xlabel('t [s]')
+        ax2.set_ylabel('Y Omega')
 
-        ax3_v.plot(t_grid, r_dot_sol[:, 2])
-        ax3_v.set_xlabel('t [s]')
-        ax3_v.set_ylabel('Z Velocity [m/s]')
+        ax3.plot(t_grid, omega_sol[:, 2])
+        ax3.set_xlabel('t [s]')
+        ax3.set_ylabel('Z Omega')
 
-        # acceleration
-        f_a, (ax1_a, ax2_a, ax3_a) = plt.subplots(3, 1, sharex=True)
-        ax1_a.plot(t_grid, r_ddot_sol[:, 0])
-        ax1_a.set_xlabel('t [s]')
-        ax1_a.set_ylabel('X Acceleration [m/s^2]')
-
-        ax2_a.plot(t_grid, r_ddot_sol[:, 1])
-        ax2_a.set_xlabel('t [s]')
-        ax2_a.set_ylabel('Y Acceleration [m/s^2]')
-
-        ax3_a.plot(t_grid, r_ddot_sol[:, 2])
-        ax3_a.set_xlabel('t [s]')
-        ax3_a.set_ylabel('Z Acceleration [m/s^2]')
+        # plot torque for full time duration
+        f_torque, ax = plt.subplots(1, 1, sharex=True)
+        ax.plot(t_grid, torque_sol[:, 0])
+        ax.set_xlabel('t [s]')
+        ax.set_ylabel('Reaction torque')
 
         plt.show()
 
