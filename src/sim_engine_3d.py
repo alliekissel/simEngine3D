@@ -30,7 +30,7 @@ class SimEngine3D:
         self.lam = 0
         self.lambda_p = 0
 
-        self.timestep = 0.01
+        self.timestep = 1e-3
         self.tspan = 10
         if analysis == 0:
             self.kinematics_solver()
@@ -223,7 +223,7 @@ class SimEngine3D:
             if body.is_ground:
                 pass
             else:
-                p_mat[idx, idx:idx + 4] = body.p.T
+                p_mat[idx, idx:idx + 4] = 2*body.p.T
                 idx += 1
         return p_mat
 
@@ -461,7 +461,7 @@ class SimEngine3D:
         t_end = self.tspan
         t_grid = np.linspace(t_start, t_end, N)
         max_iters = 20
-        tol = 1e-3
+        tol = 1e-2
         h = self.timestep
 
         start = time.time()
