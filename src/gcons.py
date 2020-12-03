@@ -115,8 +115,8 @@ class GConDP1:
                                                 constraint_dict['f_ddot'])
 
     def phi(self, t):
-        A_i = rotation(self.p_i)
-        A_j = rotation(self.p_j)
+        A_i = rotation(self.body_i.p)
+        A_j = rotation(self.body_j.p)
         return self.a_bar_i.T @ A_i.T @ A_j @ self.a_bar_j - self.prescribed_val.f(t)
 
     def nu(self, t):
@@ -125,14 +125,14 @@ class GConDP1:
 
     def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
-        A_i = rotation(self.p_i)
-        A_j = rotation(self.p_j)
+        A_i = rotation(self.body_i.p)
+        A_j = rotation(self.body_j.p)
         a_i = A_i @ self.a_bar_i
         a_j = A_j @ self.a_bar_j
-        a_dot_i = b_mat(self.p_i, self.a_bar_i) @ self.p_dot_i
-        a_dot_j = b_mat(self.p_j, self.a_bar_j) @ self.p_dot_j
-        return - a_i.T @ b_mat(self.p_dot_j, self.a_bar_j) @ self.p_dot_j \
-               - a_j.T @ b_mat(self.p_dot_i, self.a_bar_i) @ self.p_dot_i \
+        a_dot_i = b_mat(self.body_i.p, self.a_bar_i) @ self.body_i.p_dot
+        a_dot_j = b_mat(self.body_j.p, self.a_bar_j) @ self.body_j.p_dot
+        return - a_i.T @ b_mat(self.body_j.p_dot, self.a_bar_j) @ self.body_j.p_dot \
+               - a_j.T @ b_mat(self.body_i.p_dot, self.a_bar_i) @ self.body_i.p_dot \
                - 2 * (a_dot_i.T @ a_dot_j) + self.prescribed_val.f_ddot(t)
 
     def partial_r(self):
@@ -146,12 +146,12 @@ class GConDP1:
     def partial_p(self):
         # calculate partial_phi/partial_p
         # check for ground body
-        A_i = rotation(self.p_i)
-        A_j = rotation(self.p_j)
+        A_i = rotation(self.body_i.p)
+        A_j = rotation(self.body_j.p)
         a_i = A_i @ self.a_bar_i
         a_j = A_j @ self.a_bar_j
-        phi_p_i = a_j.T @ b_mat(self.p_i, self.a_bar_i)
-        phi_p_j = a_i.T @ b_mat(self.p_j, self.a_bar_j)
+        phi_p_i = a_j.T @ b_mat(self.body_i.p, self.a_bar_i)
+        phi_p_j = a_i.T @ b_mat(self.body_j.p, self.a_bar_j)
         if self.body_i.is_ground:
             return phi_p_j
         if self.body_j.is_ground:
@@ -353,8 +353,8 @@ class GConCD:
 
     def d_ij(self):
         # calculate d_ij, the distance between point P and point Q
-        A_i = rotation(self.p_i)
-        A_j = rotation(self.p_j)
+        A_i = rotation(self.body_i.p)
+        A_j = rotation(self.body_j.p)
         r_p = self.body_i.r + A_i @ self.s_bar_p_i
         r_q = self.body_j.r + A_j @ self.s_bar_q_j
         return r_q - r_p
@@ -368,8 +368,8 @@ class GConCD:
 
     def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
-        return self.c.T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
-               - self.c.T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
+        return self.c.T @ b_mat(self.body_i.p_dot, self.s_bar_p_i) @ self.body_i.p_dot \
+               - self.c.T @ b_mat(self.body_j.p_dot, self.s_bar_q_j) @ self.body_j.p_dot \
                + self.prescribed_val.f_ddot(t)
 
     def partial_r(self):
@@ -388,8 +388,8 @@ class GConCD:
     def partial_p(self):
         # calculate partial_phi/partial_p
         # check for ground body
-        phi_p_i = -self.c.T @ b_mat(self.p_i, self.s_bar_p_i)
-        phi_p_j = self.c.T @ b_mat(self.p_j, self.s_bar_q_j)
+        phi_p_i = -self.c.T @ b_mat(self.body_i.p, self.s_bar_p_i)
+        phi_p_j = self.c.T @ b_mat(self.body_j.p, self.s_bar_q_j)
         if self.body_i.is_ground:
             return phi_p_j
         if self.body_j.is_ground:

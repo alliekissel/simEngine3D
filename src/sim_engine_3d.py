@@ -25,7 +25,7 @@ class SimEngine3D:
 
         self.init_system(filename)
 
-        self.g = 9.81
+        self.g = -9.81
 
         self.lam = 0
         self.lambda_p = 0
@@ -103,8 +103,8 @@ class SimEngine3D:
                 pass
             else:
                 # update generalized coordinates for bodies
-                body.r_dot = r_dot[idx*3:idx*3 + 3]
-                body.p_dot = p_dot[idx*4:idx*4 + 4]
+                body.r_dot = r_dot
+                body.p_dot = p_dot
                 idx += 1
 
     def get_q_dot(self):
@@ -278,7 +278,8 @@ class SimEngine3D:
         g[0:3*nb] = self.get_M() @ r_ddot + self.get_phi_q()[0:nc, 0:3].T @ self.lam - self.get_F_g()
         g[3*nb:7*nb] = self.get_J_P() @ p_ddot + self.get_phi_q()[0:nc, 3:].T @ self.lam \
                        + self.get_P().T @ self.lambda_p - self.get_tau()
-        g[7*nb:] = 1/(beta_0**2 * h**2) * self.get_phi(t)
+        g[7*nb:7*nb+nb] = 1/(beta_0**2 * h**2) * self.get_phi(t)[nc:nc+nb, :]
+        g[7*nb+nb:] = 1 / (beta_0 ** 2 * h ** 2) * self.get_phi(t)[:nc, :]
 
         return g
 
@@ -330,115 +331,103 @@ class SimEngine3D:
         t_end = self.tspan
         t_grid = np.linspace(t_start, t_end, N)
 
-        max_iters = 50
-        tol = 1e-4
+        max_iters = 20
+        tol = 1e-3
 
         r_0, p_0 = self.get_q()
         q_0 = np.vstack((r_0, p_0))
-        Phi_q_0_inv = np.linalg.inv(self.get_phi_q())
 
         # initialize position, velocity and acceleration storage arrays
         r = np.zeros((N, 3))
         r_dot = np.zeros((N, 3))
         r_ddot = np.zeros((N, 3))
+
+        iterations = np.zeros((N, 1))
+
         r[0, :] = q_0[0:3, 0].T
+        Phi_q_0_inv = np.linalg.inv(self.get_phi_q())
         r_dot[0, :] = (Phi_q_0_inv @ self.get_nu(t_start))[0:3, 0].T
         r_ddot[0, :] = (Phi_q_0_inv @ self.get_gamma(t_start))[0:3, 0].T
 
         # Set initial conditions and begin time integration
         q_k = q_0
+
+        tic = time.perf_counter()
         for i, t in enumerate(t_grid):
-            # perform Newton iteration at each time step
+            if i == 0:
+                continue
+
+            Phi_q_k_inv = np.linalg.inv(self.get_phi_q())
+
             # initialize the norm to be greater than the tolerance so loop begins
             delta_q_norm = 2 * tol
             iteration = 0
-
-            # this is the initial guess for Newton iteration
-            Phi_k = self.get_phi(t)
-            Phi_q_k_inv = np.linalg.inv(self.get_phi_q())
-            delta_q = Phi_q_k_inv @ Phi_k
-            q_k1 = q_k - delta_q
-
             while delta_q_norm > tol:
 
-                if iteration >= max_iters:
-                    print("Newton-Raphson has not converged after", str(max_iters), "iterations. Stopping.")
-                    break
+                Phi_k = self.get_phi(t)
 
-                q_k = q_k1
+                # Newton step
+                delta_q = -Phi_q_k_inv @ Phi_k
+                q_k = q_k + delta_q
+
 
                 # update body's generalized coordinates
                 self.set_q(q_k)
-
-                # Update Phi, Phi_q for next iteration
-                Phi_k = self.get_phi(t)
-                Phi_q_k_inv = np.linalg.inv(self.get_phi_q())
-
-                # Newton step
-                delta_q = Phi_q_k_inv @ Phi_k
-                q_k1 = q_k - delta_q
 
                 # Calculate norm(delta_q) to check convergence
                 delta_q_norm = np.linalg.norm(delta_q)
 
                 iteration += 1
+                if iteration >= max_iters:
+                    print("Newton-Raphson has not converged after", str(max_iters), "iterations. Stopping.")
+                    break
 
-            # update body's generalized coordinates to converged q
-            self.set_q(q_k1)
+            #print("Newton-Raphson took", str(iteration), "iterations to converge.")
+            iterations[i] = iteration
+
 
             # store position for this timestep
-            r[i, :] = q_k1[0:3, 0].T
+            r[i, :] = q_k[0:3, 0].T
 
             # velocity analysis
             q_dot = np.linalg.inv(self.get_phi_q()) @ self.get_nu(t)
             r_dot[i, :] = q_dot[0:3, 0].T
+            self.set_q_dot(q_dot[0:3], q_dot[3:])
 
             # acceleration analysis
             q_ddot = np.linalg.inv(self.get_phi_q()) @ self.get_gamma(t)
             r_ddot[i, :] = q_ddot[0:3, 0].T
 
-        # plot position, velocity and acceleration for full time duration
-        # position
+        toc = time.perf_counter()
+        duration = toc - tic
+        avg_iteration = np.average(iterations)
+        print("Method took", avg_iteration, "iterations on average and ", duration,
+              "seconds to complete.")
+
         f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-        ax1.plot(t_grid, r[:, 0])
+        f.suptitle('Kinematic Analysis Using r-p Formulation', fontsize=16)
+        ax1.plot(t_grid, r[:, 0], label='x')
+        ax1.plot(t_grid, r[:, 1], label='y')
+        ax1.plot(t_grid, r[:, 2], label='z')
         ax1.set_xlabel('t [s]')
-        ax1.set_ylabel('X Position [m]')
+        ax1.set_ylabel('Position [m]')
+        ax1.legend()
 
-        ax2.plot(t_grid, r[:, 1])
+        ax2.plot(t_grid, r_dot[:, 0], label='x')
+        ax2.plot(t_grid, r_dot[:, 1], label='y')
+        ax2.plot(t_grid, r_dot[:, 2], label='z')
         ax2.set_xlabel('t [s]')
-        ax2.set_ylabel('Y Position [m]')
+        ax2.set_ylabel('Velocity [m/s]')
+        ax2.legend()
 
-        ax3.plot(t_grid, r[:, 2])
+        ax3.plot(t_grid, r_ddot[:, 0], label='x')
+        ax3.plot(t_grid, r_ddot[:, 1], label='y')
+        ax3.plot(t_grid, r_ddot[:, 2], label='z')
         ax3.set_xlabel('t [s]')
-        ax3.set_ylabel('Z Position [m]')
+        ax3.set_ylabel('Acceleration [m/s^2]')
+        ax3.legend()
 
-        # velocity
-        f_v, (ax1_v, ax2_v, ax3_v) = plt.subplots(3, 1, sharex=True)
-        ax1_v.plot(t_grid, r_dot[:, 0])
-        ax1_v.set_xlabel('t [s]')
-        ax1_v.set_ylabel('X Velocity [m/s]')
-
-        ax2_v.plot(t_grid, r_dot[:, 1])
-        ax2_v.set_xlabel('t [s]')
-        ax2_v.set_ylabel('Y Velocity [m/s]')
-
-        ax3_v.plot(t_grid, r_dot[:, 2])
-        ax3_v.set_xlabel('t [s]')
-        ax3_v.set_ylabel('Z Velocity [m/s]')
-
-        # acceleration
-        f_a, (ax1_a, ax2_a, ax3_a) = plt.subplots(3, 1, sharex=True)
-        ax1_a.plot(t_grid, r_ddot[:, 0])
-        ax1_a.set_xlabel('t [s]')
-        ax1_a.set_ylabel('X Acceleration [m/s^2]')
-
-        ax2_a.plot(t_grid, r_ddot[:, 1])
-        ax2_a.set_xlabel('t [s]')
-        ax2_a.set_ylabel('Y Acceleration [m/s^2]')
-
-        ax3_a.plot(t_grid, r_ddot[:, 2])
-        ax3_a.set_xlabel('t [s]')
-        ax3_a.set_ylabel('Z Acceleration [m/s^2]')
+        plt.show()
 
         plt.show()
         return
@@ -471,8 +460,8 @@ class SimEngine3D:
         t_start = 0
         t_end = self.tspan
         t_grid = np.linspace(t_start, t_end, N)
-        max_iters = 50
-        tol = 1e-2
+        max_iters = 20
+        tol = 1e-3
         h = self.timestep
 
         start = time.time()
@@ -481,7 +470,7 @@ class SimEngine3D:
         # solve for initial conditions, reference Lecture 17 slide 7
         F = self.get_F_g()
         tau = self.get_tau()
-        gamma_p = self.get_gamma(t_start)[(len(self.constraint_list) + self.n_bodies)-1:, :]
+        gamma_p = self.get_gamma(t_start)[len(self.constraint_list):, :]
         gamma = self.get_gamma(t_start)[0:len(self.constraint_list), :]
 
         nc = len(self.constraint_list)
@@ -506,6 +495,13 @@ class SimEngine3D:
         self.set_lambda_p(lambda_p_0)
         lambda_0 = z_0[8*nb:]
         self.set_lambda(lambda_0)
+
+        # get initial psi
+        self.psi()
+
+
+        print(np.linalg.norm(self.get_phi(0)))
+
 
         # ------------------------ BEGIN TIME EVOLUTION -------------------------------------------------
         # solution storage arrays
@@ -536,6 +532,12 @@ class SimEngine3D:
             # we already have our initial conditions. want to start at i = 1
             if i == 0:
                 continue
+
+            #print("q:", self.get_q())
+            #print("q_dot:", self.get_q_dot())
+            #print("q_ddot:", self.get_q_ddot())
+
+            #print("timestep: ", t)
 
             # STAGE 0 - Prime new time step
             r_ddot, p_ddot = self.get_q_ddot()
@@ -580,7 +582,6 @@ class SimEngine3D:
                 if iteration >= max_iters:
                     print("Solution has not converged after", str(max_iters), "iterations. Stopping.")
                     break
-
                 # get updated level 0 and level 1 values
                 r, p = self.get_q()
                 r_dot, p_dot = self.get_q_dot()
@@ -614,6 +615,7 @@ class SimEngine3D:
                 # STAGE 5 - Set nu = nu + 1, exit loop if norm of correction is small enough --------------------
                 delta_norm = np.linalg.norm(delta)
                 iteration += 1
+                #print("Iteration: ", iteration)
 
             # STAGE 6 - Store solution and move onto next time step ---------------------------------------------
             # set r, p, lam, lambda_p so that n_0 guess is correct
@@ -640,6 +642,8 @@ class SimEngine3D:
 
         end = time.time()
         print("Simulation time:", (end-start))
+
+        print(r_sol)
 
         # plot x, y, z position for full time duration
         # position
