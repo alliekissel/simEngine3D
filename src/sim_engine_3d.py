@@ -91,8 +91,12 @@ class SimEngine3D:
             if body.is_ground:
                 pass
             else:
-                r[idx*3:idx*3 + 3] = body.r
-                p[idx*4:idx*4 + 4] = body.p
+                rdim = 3
+                pdim = 4
+                r_start = idx * rdim
+                p_start = idx * pdim
+                r[r_start:r_start + rdim] = body.r
+                p[p_start:p_start + pdim] = body.p
                 idx += 1
         return r, p
 
@@ -103,8 +107,12 @@ class SimEngine3D:
                 pass
             else:
                 # update generalized coordinates for bodies
-                body.r_dot = r_dot
-                body.p_dot = p_dot
+                rdim = 3
+                pdim = 4
+                r_start = idx * rdim
+                p_start = idx * pdim
+                body.r_dot = r_dot[r_start:r_start + rdim]
+                body.p_dot = p_dot[p_start:p_start + pdim]
                 idx += 1
 
     def get_q_dot(self):
@@ -115,8 +123,12 @@ class SimEngine3D:
             if body.is_ground:
                 pass
             else:
-                r_dot[idx*3:idx*3 + 3] = body.r_dot
-                p_dot[idx*4:idx*4 + 4] = body.p_dot
+                rdim = 3
+                pdim = 4
+                r_start = idx * rdim
+                p_start = idx * pdim
+                r_dot[r_start:r_start + rdim] = body.r_dot
+                p_dot[p_start:p_start + pdim] = body.p_dot
                 idx += 1
         return r_dot, p_dot
 
@@ -127,8 +139,12 @@ class SimEngine3D:
                 pass
             else:
                 # update generalized coordinates for bodies
-                body.r_ddot = r_ddot[idx*3:idx*3 + 3]
-                body.p_ddot = p_ddot[idx*4:idx*4 + 4]
+                rdim = 3
+                pdim = 4
+                r_start = idx * rdim
+                p_start = idx * pdim
+                body.r_ddot = r_ddot[r_start:r_start + rdim]
+                body.p_ddot = p_ddot[p_start:p_start + pdim]
                 idx += 1
 
     def get_q_ddot(self):
@@ -139,8 +155,12 @@ class SimEngine3D:
             if body.is_ground:
                 pass
             else:
-                r_ddot[idx*3:idx*3 + 3] = body.r_ddot
-                p_ddot[idx*4:idx*4 + 4] = body.p_ddot
+                rdim = 3
+                pdim = 4
+                r_start = idx * rdim
+                p_start = idx * pdim
+                r_ddot[r_start:r_start + rdim] = body.r_ddot
+                p_ddot[p_start:p_start + pdim] = body.p_ddot
                 idx += 1
         return r_ddot, p_ddot
 
@@ -273,14 +293,20 @@ class SimEngine3D:
         nc = len(self.constraint_list)
 
         r_ddot, p_ddot = self.get_q_ddot()
+        Phi = self.get_phi(t)[:nc, :]
+        Phi_euler = self.get_phi(t)[nc:nc + nb, :]
+        Phi_r = self.get_phi_q()[0:nc, 0:3*nb]
+        Phi_p = self.get_phi_q()[0:nc, 3*nb:]
 
-        g = np.zeros((nc + 8*nb, 1))
-        g[0:3*nb] = self.get_M() @ r_ddot + self.get_phi_q()[0:nc, 0:3].T @ self.lam - self.get_F_g()
-        g[3*nb:7*nb] = self.get_J_P() @ p_ddot + self.get_phi_q()[0:nc, 3:].T @ self.lam \
-                       + self.get_P().T @ self.lambda_p - self.get_tau()
-        g[7*nb:7*nb+nb] = 1/(beta_0**2 * h**2) * self.get_phi(t)[nc:nc+nb, :]
-        g[7*nb+nb:] = 1 / (beta_0 ** 2 * h ** 2) * self.get_phi(t)[:nc, :]
-
+        g_row1 = self.get_M() @ r_ddot + Phi_r.T @ self.lam - self.get_F_g()
+        g_row2 = self.get_J_P() @ p_ddot + Phi_p.T @ self.lam \
+                           + self.get_P().T @ self.lambda_p - self.get_tau()
+        g_row3 = 1 / (beta_0 ** 2 * h ** 2) * Phi_euler
+        g_row4 = 1 / (beta_0 ** 2 * h ** 2) * Phi
+        g = np.block([[g_row1],
+                      [g_row2],
+                      [g_row3],
+                      [g_row4]])
         return g
 
     def psi(self):
@@ -293,16 +319,19 @@ class SimEngine3D:
         Phi_r = self.get_phi_q()[0:nc, 0:3*nb]
         Phi_p = self.get_phi_q()[0:nc, 3*nb:]
 
-        # build Psi(nu), our quasi-newton iteration matrix
-        psi = np.zeros((nc + 8*nb, nc + 8*nb))
-        psi[0:3*nb, 0:3*nb] = M
-        psi[0:3*nb, 8*nb:] = Phi_r.T
-        psi[3*nb:7*nb, 3*nb:7*nb] = J_P
-        psi[3*nb:7*nb, 7*nb:8*nb] = P.T
-        psi[3*nb:7*nb, 8*nb:] = Phi_p.T
-        psi[7*nb:8*nb, 3*nb:7*nb] = P
-        psi[8*nb:, 0:3*nb] = Phi_r
-        psi[8*nb:, 3*nb:7*nb] = Phi_p
+        # build Psi, our quasi-newton iteration matrix
+        zero_block_12 = np.zeros((3*nb, 4*nb))
+        zero_block_13 = np.zeros((3*nb, nb))
+        zero_block_21 = np.zeros((4*nb, 3*nb))
+        zero_block_31 = np.zeros((nb, 3*nb))
+        zero_block_33 = np.zeros((nb, nb))
+        zero_block_34 = np.zeros((nb, nc))
+        zero_block_43 = np.zeros((nc, nb))
+        zero_block_44 = np.zeros((nc, nc))
+        psi = np.block([[M, zero_block_12, zero_block_13, Phi_r.T],
+                        [zero_block_21, J_P, P.T, Phi_p.T],
+                        [zero_block_31, P, zero_block_33, zero_block_34],
+                        [Phi_r, Phi_p, zero_block_43, zero_block_44]])
 
         return psi
 
