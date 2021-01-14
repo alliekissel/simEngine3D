@@ -98,14 +98,9 @@ class GConDP1:
     Description credit: Dan Negrut, ME 751, Lecture 8, Slide 34
     """
 
-    def __init__(self, constraint_dict, body_list):
-        self.body_i = body_list[1]
-        self.p_i = self.body_i.p
-        self.p_dot_i = self.body_i.p_dot
-
-        self.body_j = body_list[0]
-        self.p_j = self.body_j.p
-        self.p_dot_j = self.body_j.p_dot
+    def __init__(self, constraint_dict, body_i, body_j):
+        self.body_i = body_i
+        self.body_j = body_j
 
         self.a_bar_i = np.array([constraint_dict['a_bar_i']]).T
         self.a_bar_j = np.array([constraint_dict['a_bar_j']]).T
@@ -137,15 +132,16 @@ class GConDP1:
 
     def partial_r(self):
         # calculate partial_phi/partial_r
-        # no r dependence, so the partial derivatives are zero
-        # check for ground body
-        if self.body_i.is_ground or self.body_j.is_ground:
-            return np.zeros((1, 3))
-        return np.zeros((1, 6))
+        phi_r_i = np.zeros((1, 3))
+        phi_r_j = np.zeros((1, 3))
+        if self.body_i.is_ground:
+            return phi_r_j
+        if self.body_j.is_ground:
+            return phi_r_i
+        return [phi_r_i, phi_r_j]
 
     def partial_p(self):
         # calculate partial_phi/partial_p
-        # check for ground body
         A_i = rotation(self.body_i.p)
         A_j = rotation(self.body_j.p)
         a_i = A_i @ self.a_bar_i
@@ -156,8 +152,7 @@ class GConDP1:
             return phi_p_j
         if self.body_j.is_ground:
             return phi_p_i
-        return np.concatenate((phi_p_i, phi_p_j), axis=1)
-
+        return [phi_p_i, phi_p_j]
 
 # ------------------------------------- DP2 Constraint --------------------------------------------
 class GConDP2:
@@ -168,18 +163,9 @@ class GConDP2:
     Description credit: Dan Negrut, ME 751, Lecture 9, Slide 9
     """
 
-    def __init__(self, constraint_dict, body_list):
-        self.body_i = body_list[1]
-        self.r_i = self.body_i.r
-        self.r_dot_i = self.body_i.r_dot
-        self.p_i = self.body_i.p
-        self.p_dot_i = self.body_i.p_dot
-
-        self.body_j = body_list[0]
-        self.p_j = self.body_j.p
-        self.p_dot_j = self.body_j.p_dot
-        self.r_j = self.body_j.r
-        self.r_dot_j = self.body_j.r_dot
+    def __init__(self, constraint_dict, body_i, body_j):
+        self.body_i = body_i
+        self.body_j = body_j
 
         self.a_bar_i = np.array([constraint_dict['a_bar_i']]).T
         self.s_bar_p_i = np.array([constraint_dict['s_bar_p_i']]).T
@@ -191,14 +177,14 @@ class GConDP2:
 
     def d_ij(self):
         # calculate d_ij, the distance between point P and point Q
-        A_i = rotation(self.p_i)
-        A_j = rotation(self.p_j)
+        A_i = rotation(self.body_i.p)
+        A_j = rotation(self.body_j.p)
         r_p = self.body_i.r + A_i @ self.s_bar_p_i
         r_q = self.body_j.r + A_j @ self.s_bar_q_j
         return r_q - r_p
 
     def phi(self, t):
-        A_i = rotation(self.p_i)
+        A_i = rotation(self.body_i.p)
         return self.a_bar_i.T @ A_i.T @ self.d_ij() - self.prescribed_val.f(t)
 
     def nu(self, t):
@@ -207,40 +193,36 @@ class GConDP2:
 
     def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
-        A_i = rotation(self.p_i)
+        A_i = rotation(self.body_i.p)
         a_i = A_i @ self.a_bar_i
-        a_dot_i = b_mat(self.p_i, self.a_bar_i) @ self.p_dot_i
-        d_dot_ij = self.r_dot_j + b_mat(self.p_j, self.s_bar_q_j) @ self.p_dot_j \
-                   - self.r_dot_i - b_mat(self.p_i, self.s_bar_p_i) @ self.p_dot_j
-        return - a_i.T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
-               + a_i.T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
-               - self.d_ij().T @ b_mat(self.p_dot_i, self.a_bar_i) @ self.p_dot_i \
+        a_dot_i = b_mat(self.body_i.p, self.a_bar_i) @ self.body_i.p_dot
+        d_dot_ij = self.body_j.r_dot + b_mat(self.body_j.p, self.s_bar_q_j) @ self.body_j.p_dot \
+                   - self.body_i.r_dot - b_mat(self.body_i.p, self.s_bar_p_i) @ self.body_j.p_dot
+        return - a_i.T @ b_mat(self.body_j.p_dot, self.s_bar_q_j) @ self.body_j.p_dot \
+               + a_i.T @ b_mat(self.body_i.p_dot, self.s_bar_p_i) @ self.body_i.p_dot \
+               - self.d_ij().T @ b_mat(self.body_i.p_dot, self.a_bar_i) @ self.body_i.p_dot \
                - 2 * a_dot_i.T @ d_dot_ij - self.prescribed_val.f_ddot(t)
 
     def partial_r(self):
         # calculate partial_phi/partial_r
-        # check for ground body
-        phi_r_i = -self.a_bar_i.T
-        phi_r_j = self.a_bar_i.T
-
+        phi_r_i = -self.a_bar_i.T @ rotation(self.body_i.p).T
+        phi_r_j = self.a_bar_i.T @ rotation(self.body_i.p).T
         if self.body_i.is_ground:
             return phi_r_j
         if self.body_j.is_ground:
             return phi_r_i
-        return np.concatenate((phi_r_i, phi_r_j), axis=1)
+        return [phi_r_i, phi_r_j]
 
     def partial_p(self):
         # calculate partial_phi/partial_p
-        # check for ground body
-        phi_p_i = self.d_ij().T @ b_mat(self.p_i, self.a_bar_i) \
-                - self.a_bar_i.T @ b_mat(self.p_i, self.s_bar_p_i)
-        phi_p_j = self.a_bar_i.T @ b_mat(self.p_j, self.s_bar_q_j)
-
+        phi_p_i = self.d_ij().T @ b_mat(self.body_i.p, self.a_bar_i) \
+                - self.a_bar_i.T @ rotation(self.body_i.p).T @ b_mat(self.body_i.p, self.s_bar_p_i)
+        phi_p_j = self.a_bar_i.T @ rotation(self.body_i.p).T @ b_mat(self.body_j.p, self.s_bar_q_j)
         if self.body_i.is_ground:
             return phi_p_j
-        if self.body_j.is_grounf:
+        if self.body_j.is_ground:
             return phi_p_i
-        return np.concatenate((phi_p_i, phi_p_j), axis=1)
+        return [phi_p_i, phi_p_j]
 
 
 # ------------------------------------- D Constraint --------------------------------------------
@@ -252,18 +234,9 @@ class GConD:
     Description credit: Dan Negrut, ME 751, Lecture 9, Slide 12
     """
 
-    def __init__(self, constraint_dict, body_list):
-        self.body_i = body_list[1]
-        self.r_i = self.body_i.r
-        self.r_dot_i = self.body_i.r_dot
-        self.p_i = self.body_i.p
-        self.p_dot_i = self.body_i.p_dot
-
-        self.body_j = body_list[0]
-        self.p_j = self.body_j.p
-        self.p_dot_j = self.body_j.p_dot
-        self.r_j = self.body_j.r
-        self.r_dot_j = self.body_j.r_dot
+    def __init__(self, constraint_dict, body_i, body_j):
+        self.body_i = body_i
+        self.body_j = body_j
 
         self.s_bar_p_i = np.array([constraint_dict['s_bar_p_i']]).T
         self.s_bar_q_j = np.array([constraint_dict['s_bar_q_j']]).T
@@ -274,8 +247,8 @@ class GConD:
 
     def d_ij(self):
         # calculate d_ij, the distance between point P and point Q
-        A_i = rotation(self.p_i)
-        A_j = rotation(self.p_j)
+        A_i = rotation(self.body_i.p)
+        A_j = rotation(self.body_j.p)
         r_p = self.body_i.r + A_i @ self.s_bar_p_i
         r_q = self.body_j.r + A_j @ self.s_bar_q_j
         return r_q - r_p
@@ -289,35 +262,31 @@ class GConD:
 
     def gamma(self, t):
         # calculate gamma, the RHS of the accel. equation
-        d_dot_ij = self.r_dot_j + b_mat(self.p_j, self.s_bar_q_j) @ self.p_dot_j \
-                   - self.r_dot_i - b_mat(self.p_i, self.s_bar_p_i) @ self.p_dot_j
-        return - 2 * self.d_ij().T @ b_mat(self.p_dot_j, self.s_bar_q_j) @ self.p_dot_j \
-               + 2 * self.d_ij().T @ b_mat(self.p_dot_i, self.s_bar_p_i) @ self.p_dot_i \
+        d_dot_ij = self.body_j.r_dot + b_mat(self.body_j.p, self.s_bar_q_j) @ self.body_j.p_dot \
+                   - self.body_i.r_dot - b_mat(self.body_i.p, self.s_bar_p_i) @ self.body_j.p_dot
+        return - 2 * self.d_ij().T @ b_mat(self.body_j.p_dot, self.s_bar_q_j) @ self.body_j.p_dot \
+               + 2 * self.d_ij().T @ b_mat(self.body_i.p_dot, self.s_bar_p_i) @ self.body_i.p_dot \
                - 2 * d_dot_ij.T @ d_dot_ij + self.prescribed_val.f_ddot(t)
 
     def partial_r(self):
         # calculate partial_phi/partial_r
-        # check for ground body
         phi_r_i = -2 * self.d_ij().T
         phi_r_j = 2 * self.d_ij().T
         if self.body_i.is_ground:
             return phi_r_j
         if self.body_j.is_ground:
             return phi_r_i
-        else:
-            return np.concatenate((phi_r_i, phi_r_j), axis=1)
+        return [phi_r_i, phi_r_j]
 
     def partial_p(self):
         # calculate partial_phi/partial_p
-        # check for ground body
-        phi_p_i = -2 * self.d_ij().T @ b_mat(self.p_i, self.s_bar_p_i)
-        phi_p_j = 2 * self.d_ij().T @ b_mat(self.p_j, self.s_bar_q_j)
+        phi_p_i = -2 * self.d_ij().T @ b_mat(self.body_i.p, self.s_bar_p_i)
+        phi_p_j = 2 * self.d_ij().T @ b_mat(self.body_j.p, self.s_bar_q_j)
         if self.body_i.is_ground:
             return phi_p_j
         if self.body_j.is_ground:
             return phi_p_i
-        else:
-            return np.concatenate((phi_p_i, phi_p_j), axis=1)
+        return [phi_p_i, phi_p_j]
 
 
 # ------------------------------------- CD Constraint ---------------------------------------------
@@ -330,18 +299,9 @@ class GConCD:
     Description credit: Dan Negrut, ME 751, Lecture 9, Slide 15
     """
 
-    def __init__(self, constraint_dict, body_list):
-        self.body_i = body_list[1]
-        self.r_i = self.body_i.r
-        self.r_dot_i = self.body_i.r_dot
-        self.p_i = self.body_i.p
-        self.p_dot_i = self.body_i.p_dot
-
-        self.body_j = body_list[0]
-        self.p_j = self.body_j.p
-        self.p_dot_j = self.body_j.p_dot
-        self.r_j = self.body_j.r
-        self.r_dot_j = self.body_j.r_dot
+    def __init__(self, constraint_dict, body_i, body_j):
+        self.body_i = body_i
+        self.body_j = body_j
 
         self.c = np.array([constraint_dict['c']]).T
         self.s_bar_p_i = np.array([constraint_dict['s_bar_p_i']]).T
@@ -374,25 +334,20 @@ class GConCD:
 
     def partial_r(self):
         # calculate partial_phi/partial_r
-        # no r dependence, so the partial derivatives are zero
-        # check for ground body
         phi_r_i = -self.c.T
         phi_r_j = self.c.T
         if self.body_i.is_ground:
             return phi_r_j
         if self.body_j.is_ground:
             return phi_r_i
-        else:
-            return np.concatenate((phi_r_i, phi_r_j), axis=1)
+        return [phi_r_i, phi_r_j]
 
     def partial_p(self):
         # calculate partial_phi/partial_p
-        # check for ground body
         phi_p_i = -self.c.T @ b_mat(self.body_i.p, self.s_bar_p_i)
         phi_p_j = self.c.T @ b_mat(self.body_j.p, self.s_bar_q_j)
         if self.body_i.is_ground:
             return phi_p_j
         if self.body_j.is_ground:
             return phi_p_i
-        else:
-            return np.concatenate((phi_p_i, phi_p_j), axis=1)
+        return [phi_p_i, phi_p_j]

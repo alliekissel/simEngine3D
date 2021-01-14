@@ -8,4 +8,4 @@ sys.path.append(str(src_folder))
 
 from sim_engine_3d import *
 
-simulation = SimEngine3D("../models/revJoint.mdl", analysis=1)
+simulation = SimEngine3D("../models/double_pendulum.mdl", analysis=1)

@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 
 import time
 
-
 class SimEngine3D:
     def __init__(self, filename, analysis=0):
         self.bodies_list = []
@@ -31,7 +30,7 @@ class SimEngine3D:
         self.lambda_p = 0
 
         self.timestep = 1e-3
-        self.tspan = 10
+        self.tspan = 1
         if analysis == 0:
             self.kinematics_solver()
         else:
@@ -48,14 +47,21 @@ class SimEngine3D:
             self.bodies_list.append(RigidBody(body))
 
         for con in constraints:
+            for body in self.bodies_list:
+                if body.body_id == con['body_i']:
+                    body_i = body
+                    print("body_i found")
+                if body.body_id == con['body_j']:
+                    body_j = body
+                    print("body_j found")
             if con['type'] == 'DP1':
-                self.constraint_list.append(GConDP1(con, self.bodies_list))
+                self.constraint_list.append(GConDP1(con, body_i, body_j))
             elif con['type'] == 'DP2':
-                self.constraint_list.append(GConDP2(con, self.bodies_list))
+                self.constraint_list.append(GConDP2(con, body_i, body_j))
             elif con['type'] == 'D':
-                self.constraint_list.append(GConD(con, self.bodies_list))
+                self.constraint_list.append(GConD(con, body_i, body_j))
             elif con['type'] == 'CD':
-                self.constraint_list.append(GConCD(con, self.bodies_list))
+                self.constraint_list.append(GConCD(con, body_i, body_j))
             else:
                 print("Incorrect geometric constraint type given.")
         return
@@ -77,8 +83,8 @@ class SimEngine3D:
                 # update generalized coordinates for bodies
                 rdim = 3
                 pdim = 4
-                r_start = idx * (rdim + pdim)
-                p_start = (r_start + pdim) - 1
+                r_start = idx * rdim
+                p_start = 3*self.n_bodies + idx*pdim
                 body.r = q_new[r_start:r_start + rdim]
                 body.p = q_new[p_start:p_start + pdim]
                 idx += 1
@@ -94,7 +100,7 @@ class SimEngine3D:
                 rdim = 3
                 pdim = 4
                 r_start = idx * rdim
-                p_start = idx * pdim
+                p_start = idx*pdim
                 r[r_start:r_start + rdim] = body.r
                 p[p_start:p_start + pdim] = body.p
                 idx += 1
@@ -110,7 +116,7 @@ class SimEngine3D:
                 rdim = 3
                 pdim = 4
                 r_start = idx * rdim
-                p_start = idx * pdim
+                p_start = idx*pdim
                 body.r_dot = r_dot[r_start:r_start + rdim]
                 body.p_dot = p_dot[p_start:p_start + pdim]
                 idx += 1
@@ -142,7 +148,7 @@ class SimEngine3D:
                 rdim = 3
                 pdim = 4
                 r_start = idx * rdim
-                p_start = idx * pdim
+                p_start = idx*pdim
                 body.r_ddot = r_ddot[r_start:r_start + rdim]
                 body.p_ddot = p_ddot[p_start:p_start + pdim]
                 idx += 1
@@ -158,7 +164,7 @@ class SimEngine3D:
                 rdim = 3
                 pdim = 4
                 r_start = idx * rdim
-                p_start = idx * pdim
+                p_start = idx*pdim
                 r_ddot[r_start:r_start + rdim] = body.r_ddot
                 p_ddot[p_start:p_start + pdim] = body.p_ddot
                 idx += 1
@@ -179,19 +185,42 @@ class SimEngine3D:
         return np.concatenate((Phi_K, Phi_p), axis=0)
 
     def get_phi_q(self):
-        Phi_r = np.concatenate([con.partial_r() for con in self.constraint_list], axis=0)
-        Phi_p = np.concatenate([con.partial_p() for con in self.constraint_list], axis=0)
-        Phi_q = np.concatenate((Phi_r, Phi_p), axis=1)
+        nc = len(self.constraint_list)
+        nb = self.n_bodies
+        jacobian = np.zeros((nc + nb, 7*nb))
+        offset = 3 * nb
 
-        Phi_euler = np.zeros((self.n_bodies, 7))
+        for row, con in enumerate(self.constraint_list):
+            # subtract 1 since ground body does not show up in jacobian
+            idi = con.body_i.body_id - 1
+            idj = con.body_j.body_id - 1
+            if con.body_i.is_ground:
+                # fill row of jacobian with only body j
+                jacobian[row, 3*idj:3*idj + 3] = con.partial_r()
+                jacobian[row, offset + 4*idj:offset + 4*idj + 4] = con.partial_p()
+            elif con.body_j.is_ground:
+                # fill row of jacobian with only body i
+                jacobian[row, 3*idi:3*idi + 3] = con.partial_r()
+                jacobian[row, offset + 4*idi:offset + 4*idi + 4] = con.partial_p()
+            else:
+                # fill row of jacobian with both body i and body j
+                jacobian[row, 3 * idi:3 * idi + 3] = con.partial_r()[0]
+                jacobian[row, offset + 4 * idi:offset + 4 * idi + 4] = con.partial_p()[0]
+                jacobian[row, 3 * idj:3 * idj + 3] = con.partial_r()[1]
+                jacobian[row, offset + 4 * idj:offset + 4 * idj + 4] = con.partial_p()[1]
+
+        # Euler parameter rows for each body
+        row_euler = nc
         idx = 0
         for body in self.bodies_list:
             if body.is_ground:
                 pass
             else:
-                Phi_euler[idx, 3:] = 2 * body.p.T
+                jacobian[row_euler, offset + 4 * idx:offset + 4 * idx + 4] = 2 * body.p.T
+                row_euler += 1
                 idx += 1
-        return np.concatenate((Phi_q, Phi_euler), axis=0)
+
+        return jacobian
 
     def get_nu(self, t):
         nu_G = np.concatenate([con.nu(t) for con in self.constraint_list], axis=0)
@@ -355,31 +384,53 @@ class SimEngine3D:
             if not body.is_ground:
                 self.n_bodies += 1
 
+        nb = self.n_bodies
+        print("Number of bodies counted:", nb)
+
         N = int(self.tspan/self.timestep)
         t_start = 0
         t_end = self.tspan
         t_grid = np.linspace(t_start, t_end, N)
 
-        max_iters = 20
-        tol = 1e-3
+        max_iters = 200
+        tol = 1e-2
 
         r_0, p_0 = self.get_q()
         q_0 = np.vstack((r_0, p_0))
 
         # initialize position, velocity and acceleration storage arrays
-        r = np.zeros((N, 3))
-        r_dot = np.zeros((N, 3))
-        r_ddot = np.zeros((N, 3))
+        r = np.zeros((N, 3*nb))
+        r_dot = np.zeros((N, 3*nb))
+        r_ddot = np.zeros((N, 3*nb))
+
+        p = np.zeros((N, 4*nb))
+        p_dot = np.zeros((N, 4*nb))
+        p_ddot = np.zeros((N, 4*nb))
 
         iterations = np.zeros((N, 1))
 
-        r[0, :] = q_0[0:3, 0].T
+        r[0, :] = q_0[0:3*nb, 0].T
         Phi_q_0_inv = np.linalg.inv(self.get_phi_q())
-        r_dot[0, :] = (Phi_q_0_inv @ self.get_nu(t_start))[0:3, 0].T
-        r_ddot[0, :] = (Phi_q_0_inv @ self.get_gamma(t_start))[0:3, 0].T
+        r_dot[0, :] = (Phi_q_0_inv @ self.get_nu(t_start))[0:3*nb, 0].T
+        r_ddot[0, :] = (Phi_q_0_inv @ self.get_gamma(t_start))[0:3*nb, 0].T
+
+        p[0, :] = q_0[3*nb:, 0].T
+        Phi_q_0_inv = np.linalg.inv(self.get_phi_q())
+        p_dot[0, :] = (Phi_q_0_inv @ self.get_nu(t_start))[3*nb:, 0].T
+        p_ddot[0, :] = (Phi_q_0_inv @ self.get_gamma(t_start))[3*nb:, 0].T
 
         # Set initial conditions and begin time integration
         q_k = q_0
+
+        slider_pos = np.zeros((N, 3))
+        slider_vel = np.zeros((N, 3))
+        slider_acc = np.zeros((N, 3))
+
+        #omega_array = np.zeros((N, 3))
+
+        slider_pos[0] = r[0, 8]
+        slider_vel[0] = r_dot[0, 8]
+        slider_acc[0] = r_ddot[0, 8]
 
         tic = time.perf_counter()
         for i, t in enumerate(t_grid):
@@ -387,6 +438,9 @@ class SimEngine3D:
                 continue
 
             Phi_q_k_inv = np.linalg.inv(self.get_phi_q())
+            if np.linalg.cond(Phi_q_k_inv) > 1000:
+                print('t: {:.3f}, cond: {:f}'.format(
+                    t, np.linalg.cond(Phi_q_k_inv)))
 
             # initialize the norm to be greater than the tolerance so loop begins
             delta_q_norm = 2 * tol
@@ -399,7 +453,6 @@ class SimEngine3D:
                 delta_q = -Phi_q_k_inv @ Phi_k
                 q_k = q_k + delta_q
 
-
                 # update body's generalized coordinates
                 self.set_q(q_k)
 
@@ -407,6 +460,8 @@ class SimEngine3D:
                 delta_q_norm = np.linalg.norm(delta_q)
 
                 iteration += 1
+                print('t: {:.3f}, k: {:>2d}, norm: {:6.6e}'.format(
+                    t, iteration, delta_q_norm))
                 if iteration >= max_iters:
                     print("Newton-Raphson has not converged after", str(max_iters), "iterations. Stopping.")
                     break
@@ -416,16 +471,25 @@ class SimEngine3D:
 
 
             # store position for this timestep
-            r[i, :] = q_k[0:3, 0].T
+            r[i, :] = q_k[0:3*nb, 0].T
+            p[i, :] = q_k[3*nb:, 0].T
 
             # velocity analysis
             q_dot = np.linalg.inv(self.get_phi_q()) @ self.get_nu(t)
-            r_dot[i, :] = q_dot[0:3, 0].T
-            self.set_q_dot(q_dot[0:3], q_dot[3:])
+            r_dot[i, :] = q_dot[0:3*nb, 0].T
+            p_dot[i, :] = q_dot[3 * nb:, 0].T
+
+            self.set_q_dot(q_dot[0:3*nb], q_dot[3*nb:])
 
             # acceleration analysis
             q_ddot = np.linalg.inv(self.get_phi_q()) @ self.get_gamma(t)
-            r_ddot[i, :] = q_ddot[0:3, 0].T
+            r_ddot[i, :] = q_ddot[0:3*nb, 0].T
+
+            slider_pos[i] = r[i, 8]
+            slider_vel[i] = r_dot[i, 8]
+            slider_acc[i] = r_ddot[i, 8]
+
+            #omega_array[i] = omega(p[i, :], p_dot[i, :])
 
         toc = time.perf_counter()
         duration = toc - tic
@@ -433,32 +497,26 @@ class SimEngine3D:
         print("Method took", avg_iteration, "iterations on average and ", duration,
               "seconds to complete.")
 
-        f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-        f.suptitle('Kinematic Analysis Using r-p Formulation', fontsize=16)
-        ax1.plot(t_grid, r[:, 0], label='x')
-        ax1.plot(t_grid, r[:, 1], label='y')
-        ax1.plot(t_grid, r[:, 2], label='z')
+        _, ax1 = plt.subplots()
+        ax1.plot(t_grid, slider_pos[:, 0])
         ax1.set_xlabel('t [s]')
         ax1.set_ylabel('Position [m]')
-        ax1.legend()
+        ax1.set_title('Link 3 position, r-p version')
 
-        ax2.plot(t_grid, r_dot[:, 0], label='x')
-        ax2.plot(t_grid, r_dot[:, 1], label='y')
-        ax2.plot(t_grid, r_dot[:, 2], label='z')
+        _, ax2 = plt.subplots()
+        ax2.plot(t_grid, slider_vel[:, 0])
         ax2.set_xlabel('t [s]')
         ax2.set_ylabel('Velocity [m/s]')
-        ax2.legend()
+        ax2.set_title('Link 3 velocity, r-p version')
 
-        ax3.plot(t_grid, r_ddot[:, 0], label='x')
-        ax3.plot(t_grid, r_ddot[:, 1], label='y')
-        ax3.plot(t_grid, r_ddot[:, 2], label='z')
+        _, ax3 = plt.subplots()
+        ax3.plot(t_grid, slider_acc[:, 0])
         ax3.set_xlabel('t [s]')
         ax3.set_ylabel('Acceleration [m/s^2]')
-        ax3.legend()
+        ax3.set_title('Link 3 acceleration, r-p version')
 
         plt.show()
 
-        plt.show()
         return
 
     def inverse_dynamics_solver(self):
@@ -536,26 +594,26 @@ class SimEngine3D:
         # solution storage arrays
         r_0, p_0 = self.get_q()
         r_dot_0, p_dot_0 = self.get_q_dot()
-
-        r_sol = np.zeros((N, 3))
-        r_dot_sol = np.zeros((N, 3))
-        r_ddot_sol = np.zeros((N, 3))
+        # @todo: replace self.n_bodies with nb
+        r_sol = np.zeros((N, 3*self.n_bodies))
+        r_dot_sol = np.zeros((N, 3*self.n_bodies))
+        r_ddot_sol = np.zeros((N, 3*self.n_bodies))
         r_sol[0, :] = r_0.T
         r_dot_sol[0, :] = r_dot_0.T
         r_ddot_sol[0, :] = r_ddot_0.T
 
-        p_sol = np.zeros((N, 4))
-        p_dot_sol = np.zeros((N, 4))
-        p_ddot_sol = np.zeros((N, 4))
+        p_sol = np.zeros((N, 4*self.n_bodies))
+        p_dot_sol = np.zeros((N, 4*self.n_bodies))
+        p_ddot_sol = np.zeros((N, 4*self.n_bodies))
         p_sol[0, :] = p_0.T
         p_dot_sol[0, :] = p_dot_0.T
         p_ddot_sol[0, :] = p_ddot_0.T
 
-        omega_sol = np.zeros((N, 3))
-        omega_sol[0, :] = omega(p_0, p_ddot_0).T
-
-        torque_sol = np.zeros((N, 3))
-        torque_sol[0, :] = self.reaction_torque().T
+        # omega_sol = np.zeros((N, 3*self.n_bodies))
+        # omega_sol[0, :] = omega(p_0, p_ddot_0).T
+        #
+        # torque_sol = np.zeros((N, 3*self.n_bodies))
+        # torque_sol[0, :] = self.reaction_torque().T
 
         for i, t in enumerate(t_grid):
             # we already have our initial conditions. want to start at i = 1
@@ -570,7 +628,7 @@ class SimEngine3D:
 
             # STAGE 0 - Prime new time step
             r_ddot, p_ddot = self.get_q_ddot()
-            lam = self.lam  #@TODO: generalize these to more bodies
+            lam = self.lam
             lambda_p = self.lambda_p
 
             # nu = 0
@@ -655,11 +713,11 @@ class SimEngine3D:
             p_dot_n = c_p_dot + beta_0 * h * p_ddot
             self.set_q_dot(r_dot_n, p_dot_n)
 
-            # calculate omega at this time step
-            omega_sol[i, :] = omega(p_n, p_ddot).T
-
-            # calculate reaction torque at this time step
-            torque_sol[i, :] = self.reaction_torque().T
+            # # calculate omega at this time step
+            # omega_sol[i, :] = omega(p_n, p_ddot).T
+            #
+            # # calculate reaction torque at this time step
+            # torque_sol[i, :] = self.reaction_torque().T
 
             # store solutions for plotting
             r_sol[i, :] = r_n.T
@@ -689,32 +747,32 @@ class SimEngine3D:
         ax3.set_xlabel('t [s]')
         ax3.set_ylabel('Z Position [m]')
 
-        # plot omega for full time duration
-        # position
-        f_omega, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-        ax1.plot(t_grid, omega_sol[:, 0])
-        ax1.set_xlabel('t [s]')
-        ax1.set_ylabel('X Omega')
-
-        ax2.plot(t_grid, omega_sol[:, 1])
-        ax2.set_xlabel('t [s]')
-        ax2.set_ylabel('Y Omega')
-
-        ax3.plot(t_grid, omega_sol[:, 2])
-        ax3.set_xlabel('t [s]')
-        ax3.set_ylabel('Z Omega')
-
-        # plot torque for full time duration
-        f_torque, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-        ax1.plot(t_grid, torque_sol[:, 0])
-        ax1.set_xlabel('t [s]')
-        ax1.set_ylabel('X Reaction torque')
-        ax2.plot(t_grid, torque_sol[:, 1])
-        ax2.set_xlabel('t [s]')
-        ax2.set_ylabel('Y Reaction torque')
-        ax3.plot(t_grid, torque_sol[:, 2])
-        ax3.set_xlabel('t [s]')
-        ax3.set_ylabel('Z Reaction torque')
+        # # plot omega for full time duration
+        # # position
+        # f_omega, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        # ax1.plot(t_grid, omega_sol[:, 0])
+        # ax1.set_xlabel('t [s]')
+        # ax1.set_ylabel('X Omega')
+        #
+        # ax2.plot(t_grid, omega_sol[:, 1])
+        # ax2.set_xlabel('t [s]')
+        # ax2.set_ylabel('Y Omega')
+        #
+        # ax3.plot(t_grid, omega_sol[:, 2])
+        # ax3.set_xlabel('t [s]')
+        # ax3.set_ylabel('Z Omega')
+        #
+        # # plot torque for full time duration
+        # f_torque, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        # ax1.plot(t_grid, torque_sol[:, 0])
+        # ax1.set_xlabel('t [s]')
+        # ax1.set_ylabel('X Reaction torque')
+        # ax2.plot(t_grid, torque_sol[:, 1])
+        # ax2.set_xlabel('t [s]')
+        # ax2.set_ylabel('Y Reaction torque')
+        # ax3.plot(t_grid, torque_sol[:, 2])
+        # ax3.set_xlabel('t [s]')
+        # ax3.set_ylabel('Z Reaction torque')
 
         plt.show()
 

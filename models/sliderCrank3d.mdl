@@ -236,11 +236,11 @@
 	    	"type": "DP1",
 	    	"body_i": 4,
 	    	"body_j": 1,
-	    	"a_bar_i": [0, 1, 0],
+	    	"a_bar_i": [0, 0, 1],
 	    	"a_bar_j": [0, 1, 0],
-	    	"f": "cos(2*pi*t + pi/2)",
-			"f_dot": "-2*pi*cos(2*pi*t)",
-			"f_ddot": "4*pi**2*sin(2*pi*t)"
+	    	"f": "cos(2*pi*t)",
+			"f_dot": "-2*pi*sin(2*pi*t)",
+			"f_ddot": "-4*pi**2*cos(2*pi*t)"
 	    }
 	]
 }
